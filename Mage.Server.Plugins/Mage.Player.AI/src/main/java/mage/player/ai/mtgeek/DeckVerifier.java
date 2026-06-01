@@ -24,7 +24,7 @@ public class DeckVerifier {
         VerifyReport report = new VerifyReport();
         List<String> lines;
         try {
-            lines = Files.readAllLines(Path.of(dckPath));
+            lines = Files.readAllLines(Path.of(dckPath), java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new RuntimeException("Cannot read .dck file: " + dckPath, e);
         }
@@ -33,6 +33,8 @@ public class DeckVerifier {
             if (line.isEmpty()) continue;
             if (line.startsWith("#")) continue;       // comment
             if (line.startsWith("NAME:")) continue;   // deck name header
+            if (line.startsWith("AUTHOR:")) continue; // deck author header
+            if (line.startsWith("LAYOUT")) continue;  // covers LAYOUT and LAYOUT MAIN/SIDEBOARD variants
             Matcher m = LINE.matcher(line);
             if (!m.matches()) {
                 report.missing.add("UNPARSED: " + line);

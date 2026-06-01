@@ -10,6 +10,7 @@ import mage.game.GameException;
 import mage.game.Table;
 import mage.game.TwoPlayerDuel;
 import mage.game.mulligan.MulliganType;
+import org.junit.After;
 import org.junit.Test;
 import org.mage.test.player.TestPlayer;
 import org.mage.test.serverside.base.CardTestPlayerBaseAI;
@@ -26,23 +27,9 @@ import java.util.UUID;
 import static org.junit.Assert.assertTrue;
 
 /**
- * End-to-end AI-vs-AI deck match test (RED in TDD cycle).
- * <p>
- * Loads two real 60-card .dck files and runs a game to completion using
- * {@link MTGeekTrivialPlayer} for both sides.
- * <p>
- * RED because {@code MTGeekTrivialPlayer.priority()} is a no-op from
- * {@code ComputerPlayer}: the game will stall or end without any player
- * winning inside 50 turns.  Task 13 overrides {@code priority()} to make
- * this GREEN.
- * <p>
- * Note on log capture: {@code DataCollectorServices.activeServices} is
- * package-private, so we cannot inject a collector from this package without
- * reflection.  The game log therefore flows only to the standard console
- * output captured by Surefire.  The {@code target/match-log.txt} file
- * produced here records the final game state summary instead.
- *
- * @author MTGeek / Task 12
+ * End-to-end AI-vs-AI test: two MTGeekTrivialPlayers play 60-card Legacy/Vintage
+ * decks (Show and Tell combo vs Dimir Tempo). Asserts the game ends within the
+ * stop-turn limit and dumps the full game log to target/match-log.txt.
  */
 public class MTGeekDeckMatchTest extends CardTestPlayerBaseAI {
 
@@ -50,6 +37,9 @@ public class MTGeekDeckMatchTest extends CardTestPlayerBaseAI {
     // as the default "RB Aggro.dck" in CardTestPlayerBase).
     private static final String DECK_A = "src/test/resources/mtgeek/show-and-tell.dck";
     private static final String DECK_B = "src/test/resources/mtgeek/dimir-tempo.dck";
+
+    // Collector instance held as a field so @After can unregister it.
+    private final ListGameLogCollector collector = new ListGameLogCollector();
 
     // -----------------------------------------------------------------------
     // Bypass the harness's AI branch: return empty list so createPlayer()
@@ -130,12 +120,20 @@ public class MTGeekDeckMatchTest extends CardTestPlayerBaseAI {
     }
 
     // -----------------------------------------------------------------------
+    // Teardown: unregister the collector after each test to avoid leaking it
+    // into subsequent tests in the same JVM process.
+    // -----------------------------------------------------------------------
+    @After
+    public void unregisterCollector() {
+        DataCollectorServices.unregister(collector);
+    }
+
+    // -----------------------------------------------------------------------
     // The actual test.
     // -----------------------------------------------------------------------
     @Test
     public void trivialMatchCompletes_ShowAndTell_vs_DimirTempo() throws IOException {
         // Register log collector BEFORE execute() so it receives all events.
-        ListGameLogCollector collector = new ListGameLogCollector();
         DataCollectorServices.register(collector);
 
         // 50 turns gives the game plenty of room — or enough rope to confirm

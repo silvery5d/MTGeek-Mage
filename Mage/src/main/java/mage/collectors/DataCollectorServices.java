@@ -10,6 +10,7 @@ import org.apache.log4j.Logger;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * Not a real data collector. It's a global service to inject and collect data all around the code.
@@ -27,7 +28,7 @@ final public class DataCollectorServices implements DataCollector {
 
     // fill on server startup, so it's thread safe
     Set<DataCollector> allServices = new LinkedHashSet<>();
-    Set<DataCollector> activeServices = new LinkedHashSet<>();
+    private static final Set<DataCollector> activeServices = new CopyOnWriteArraySet<>();
 
     public static DataCollectorServices getInstance() {
         if (instance == null) {
@@ -61,7 +62,7 @@ final public class DataCollectorServices implements DataCollector {
             isDefault |= enableSaveGameHistory && service.getServiceCode().equals(SaveGameHistoryDataCollector.SERVICE_CODE);
             boolean isEnable = isServiceEnable(service.getServiceCode(), isDefault);
             if (isEnable) {
-                getInstance().activeServices.add(service);
+                activeServices.add(service);
             }
             String info = isEnable ? String.format(" (%s)", service.getInitInfo()) : "";
             logger.info(String.format("Data collectors: %s - %s%s", service.getServiceCode(), isEnable ? "enabled" : "disabled", info));
@@ -84,7 +85,15 @@ final public class DataCollectorServices implements DataCollector {
      * The collector will receive all subsequent game-lifecycle callbacks.
      */
     public static void register(DataCollector dc) {
-        getInstance().activeServices.add(dc);
+        activeServices.add(dc);
+    }
+
+    /**
+     * Unregister a DataCollector that was previously registered at runtime.
+     * Safe to call concurrently with register() and game-lifecycle callbacks.
+     */
+    public static void unregister(DataCollector dc) {
+        activeServices.remove(dc);
     }
 
     @Override
