@@ -53,6 +53,7 @@ import mage.util.RandomUtil;
 import mage.watchers.common.AttackedOrBlockedThisCombatWatcher;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
+import org.mage.test.mtgeek.MTGeekTrivialPlayer;
 import static org.mage.test.serverside.base.impl.CardTestPlayerAPIImpl.*;
 
 import java.io.Serializable;
@@ -136,6 +137,12 @@ public class TestPlayer implements Player {
     }
 
     public TestPlayer(TestComputerPlayerMonteCarlo computerPlayer) {
+        this.computerPlayer = computerPlayer;
+        AIPlayer = false;
+        computerPlayer.setTestPlayerLink(this);
+    }
+
+    public TestPlayer(MTGeekTrivialPlayer computerPlayer) {
         this.computerPlayer = computerPlayer;
         AIPlayer = false;
         computerPlayer.setTestPlayerLink(this);
