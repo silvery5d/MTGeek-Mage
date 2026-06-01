@@ -1,10 +1,13 @@
 package org.mage.test.mtgeek;
 
+import mage.collectors.DataCollectorServices;
+import mage.collectors.services.EmptyDataCollector;
 import mage.constants.MultiplayerAttackOption;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
 import mage.game.GameException;
+import mage.game.Table;
 import mage.game.TwoPlayerDuel;
 import mage.game.mulligan.MulliganType;
 import org.junit.Test;
@@ -15,8 +18,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.Assert.assertTrue;
 
@@ -87,31 +92,77 @@ public class MTGeekDeckMatchTest extends CardTestPlayerBaseAI {
     }
 
     // -----------------------------------------------------------------------
+    // Log collector: captures every game-log message during execute().
+    // -----------------------------------------------------------------------
+
+    /** Collects game-log lines into a list for writing to target/match-log.txt. */
+    private static final class ListGameLogCollector extends EmptyDataCollector {
+        final List<String> lines = new ArrayList<>();
+
+        @Override
+        public String getServiceCode() {
+            return "mtgeek-list-game-log";
+        }
+
+        @Override
+        public void onGameLog(Game game, String message) {
+            lines.add(message);
+        }
+
+        @Override
+        public void onGameStart(Game game) {
+            lines.add("[GAME START] id=" + game.getId());
+        }
+
+        @Override
+        public void onGameEnd(Game game) {
+            lines.add("[GAME END] winner=" + game.getWinner() + "  turn=" + game.getTurnNum());
+        }
+
+        @Override
+        public void onTableStart(Table table) {}
+
+        @Override
+        public void onTableEnd(Table table) {}
+
+        @Override
+        public void onChatGame(UUID gameId, String userName, String message) {}
+    }
+
+    // -----------------------------------------------------------------------
     // The actual test.
     // -----------------------------------------------------------------------
     @Test
     public void trivialMatchCompletes_ShowAndTell_vs_DimirTempo() throws IOException {
+        // Register log collector BEFORE execute() so it receives all events.
+        ListGameLogCollector collector = new ListGameLogCollector();
+        DataCollectorServices.register(collector);
+
         // 50 turns gives the game plenty of room — or enough rope to confirm
         // that the game loops because priority() is a no-op (RED state).
         setStopAt(50, PhaseStep.UNTAP);
         execute();
 
-        // Write a brief game-state summary to target/ for post-mortem inspection.
-        Path out = Path.of("target/match-log.txt");
-        Files.createDirectories(out.getParent());
+        // Build log content: collector lines + final summary.
         String summary = String.format(
-                "hasEnded=%s  winner=%s  turn=%d%n",
+                "hasEnded=%s  winner=%s  turn=%d",
                 currentGame.hasEnded(),
                 currentGame.getWinner(),
                 currentGame.getTurnNum());
-        Files.writeString(out, summary);
 
-        // RED assertion: will fail until Task 13 overrides priority().
-        // ComputerPlayer.priority() is a no-op, so the game should NOT end
-        // by turn 50 — making this assertion reliably false in the RED state.
+        List<String> allLines = new ArrayList<>(collector.lines);
+        allLines.add("");
+        allLines.add("=== FINAL SUMMARY ===");
+        allLines.add(summary);
+
+        // Write to target/ for post-mortem inspection.
+        Path out = Path.of("target/match-log.txt");
+        Files.createDirectories(out.getParent());
+        Files.write(out, allLines);
+
+        // GREEN assertion: game must end before turn 50.
         assertTrue(
-                "Game should have ended by turn 50 — FAIL expected until Task 13 implements priority(). "
-                        + "Game summary: " + summary.trim(),
+                "Game should have ended by turn 50. " + summary,
                 currentGame.hasEnded());
     }
 }

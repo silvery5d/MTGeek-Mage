@@ -79,6 +79,14 @@ final public class DataCollectorServices implements DataCollector {
         return isEnable;
     }
 
+    /**
+     * Register an additional DataCollector at runtime (e.g. from unit tests).
+     * The collector will receive all subsequent game-lifecycle callbacks.
+     */
+    public static void register(DataCollector dc) {
+        getInstance().activeServices.add(dc);
+    }
+
     @Override
     public String getServiceCode() {
         throw new IllegalStateException("Wrong code usage. Use it by static methods only");

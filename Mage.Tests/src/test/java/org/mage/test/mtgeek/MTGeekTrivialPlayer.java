@@ -1,15 +1,20 @@
 package org.mage.test.mtgeek;
 
 import mage.abilities.Ability;
+import mage.abilities.ActivatedAbility;
 import mage.cards.Cards;
 import mage.choices.Choice;
 import mage.constants.Outcome;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.game.permanent.Permanent;
 import mage.player.ai.ComputerPlayer;
 import mage.target.Target;
 import mage.target.TargetCard;
 import org.mage.test.player.TestPlayer;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * 最简自定义 player。目标是让 game 能正常推进到结束。
@@ -137,6 +142,66 @@ public class MTGeekTrivialPlayer extends ComputerPlayer {
     }
 
     // -----------------------------------------------------------------------
-    // Task 13 will override priority() / selectAttackers() here.
+    // Task 13: priority() + selectAttackers() to make games complete.
     // -----------------------------------------------------------------------
+
+    /**
+     * Trivial priority implementation: on main phase, play a land or cast the
+     * cheapest available spell. All other windows → pass.
+     * <p>
+     * Pattern mirrors ComputerPlayer6.act(): activate one ability, then pass
+     * if the ability went on the stack (so the game advances the stack).
+     * Land plays don't use the stack, so we don't call pass() after them and
+     * let the engine give us priority again.
+     */
+    @Override
+    public boolean priority(Game game) {
+        // Only act on our own turns in main phases with an empty stack.
+        if (!game.isActivePlayer(getId())
+                || !game.isMainPhase()
+                || !game.getStack().isEmpty()) {
+            pass(game);
+            return false;
+        }
+
+        // Get all currently playable abilities (lands + spells).
+        List<ActivatedAbility> playable = getPlayable(game, true);
+        if (playable.isEmpty()) {
+            pass(game);
+            return false;
+        }
+
+        // Pick the first playable ability and activate it.
+        ActivatedAbility chosen = playable.get(0);
+        boolean activated = activateAbility(chosen, game);
+        if (!activated) {
+            // Activation failed (e.g. targeting could not be completed) — pass.
+            pass(game);
+            return false;
+        }
+
+        // If the ability uses the stack (i.e. it's a spell/ability, not a land),
+        // we must call pass() so the engine moves to the "resolve" cycle.
+        if (chosen.isUsesStack()) {
+            pass(game);
+        }
+        return true;
+    }
+
+    /**
+     * Attack with every creature that can legally attack. Target: the single
+     * opponent in this 1-vs-1 match.
+     */
+    @Override
+    public void selectAttackers(Game game, UUID attackingPlayerId) {
+        if (!attackingPlayerId.equals(getId())) {
+            return;
+        }
+        UUID opponentId = game.getOpponents(getId()).iterator().next();
+        for (Permanent p : game.getBattlefield().getAllActivePermanents(getId())) {
+            if (p.isCreature(game) && p.canAttack(opponentId, game)) {
+                declareAttacker(p.getId(), opponentId, game, false);
+            }
+        }
+    }
 }
