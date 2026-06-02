@@ -1,12 +1,15 @@
 package org.mage.test.mtgeek;
 
+import mage.abilities.Ability;
 import mage.abilities.ActivatedAbility;
 import mage.cards.Card;
+import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
 import mage.game.permanent.Permanent;
 import mage.players.Player;
+import mage.target.Target;
 import org.mage.test.mtgeek.simple.DecisionLogger;
 import org.mage.test.mtgeek.simple.ValueFunction;
 import org.mage.test.mtgeek.simple.Weights;
@@ -14,6 +17,7 @@ import org.mage.test.mtgeek.simple.Weights;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -286,5 +290,46 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         }
     }
 
-    // chooseTarget() / chooseMode() / chooseUse() override 在 Task 16-17 添加
+    // ── Task 16: chooseTarget (most-common overload) ──────────────────────────
+
+    @Override
+    public boolean chooseTarget(Outcome outcome, Target target,
+                                Ability source, Game game) {
+        if (target == null) return false;
+
+        Set<UUID> possible = target.possibleTargets(getId(), source, game);
+        if (possible == null || possible.isEmpty()) {
+            return !target.isRequired(source);
+        }
+
+        if (possible.size() == 1) {
+            UUID only = possible.iterator().next();
+            target.addTarget(only, source, game);
+            return true;
+        }
+
+        // Multiple candidates: score each and pick the best.
+        boolean isFriendly = outcome.isGood();
+        UUID sourceId = source == null ? null : source.getSourceId();
+        UUID best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (UUID id : possible) {
+            double s = ValueFunction.scoreTarget(game, sourceId, id, isFriendly);
+            if (s > bestScore) {
+                bestScore = s;
+                best = id;
+            }
+        }
+
+        if (best != null) {
+            target.addTarget(best, source, game);
+            DecisionLogger.logOnly(game, "chooseTarget",
+                    "target=" + best.toString().substring(0, 8) + "..., possible=" + possible.size(),
+                    bestScore);
+            return true;
+        }
+        return false;
+    }
+
+    // chooseMode() / chooseUse() override 在 Task 17 添加
 }
