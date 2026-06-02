@@ -2,6 +2,7 @@ package org.mage.test.mtgeek;
 
 import mage.abilities.Ability;
 import mage.abilities.ActivatedAbility;
+import mage.abilities.mana.ActivatedManaAbilityImpl;
 import mage.cards.Card;
 import mage.constants.Outcome;
 import mage.constants.PhaseStep;
@@ -26,12 +27,23 @@ import java.util.UUID;
  */
 public class MTGeekSimplePlayer extends MTGeekBasePlayer {
 
+    /**
+     * Tracks (turnNum → Set of sourceIds) that have been tried and failed
+     * (activateAbility returned false) during priority() this turn.
+     * Cleared each time a new turn number is seen.
+     * Prevents the loop: "pick Surgical Extraction → no target → fail → repeat".
+     */
+    private int failedTurn = -1;
+    private final java.util.HashSet<UUID> failedThisTurn = new java.util.HashSet<>();
+
     public MTGeekSimplePlayer(String name, RangeOfInfluence range) {
         super(name, range);
     }
 
     protected MTGeekSimplePlayer(final MTGeekSimplePlayer player) {
         super(player);
+        this.failedTurn = player.failedTurn;
+        this.failedThisTurn.addAll(player.failedThisTurn);
     }
 
     @Override
@@ -69,9 +81,23 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         }
 
         // 3) Enumerate candidates: playable spells + lands from hand + pass
+
+        // Reset per-turn failure tracker when a new turn begins.
+        int thisTurn = game.getTurnNum();
+        if (thisTurn != failedTurn) {
+            failedTurn = thisTurn;
+            failedThisTurn.clear();
+        }
+
         List<Candidate> cands = new ArrayList<>();
 
         List<ActivatedAbility> playable = getPlayable(game, true);
+        // Filter 1: drop mana abilities — activating them adds mana but doesn't
+        // advance priority (XMage re-invokes priority on same player immediately).
+        playable.removeIf(ab -> ab instanceof ActivatedManaAbilityImpl);
+        // Filter 2: drop spells/abilities whose sourceId has already failed
+        // activateAbility() this turn (e.g. Surgical Extraction with no targets).
+        playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
         for (ActivatedAbility ab : playable) {
             Card src = game.getCard(ab.getSourceId());
             if (src == null) continue;
@@ -186,9 +212,17 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             case "cast":
                 for (ActivatedAbility ab : playable) {
                     if (ab.getSourceId().equals(best.id)) {
-                        return activateAbility(ab, game);
+                        boolean ok = activateAbility(ab, game);
+                        if (!ok) {
+                            // Record this sourceId as failed so we don't retry it
+                            // in subsequent priority() calls this same turn.
+                            failedThisTurn.add(best.id);
+                        }
+                        return ok;
                     }
                 }
+                // No matching ability found — record failure and fall through to pass.
+                if (best.id != null) failedThisTurn.add(best.id);
                 break;
             case "land":
                 Card land = game.getCard(best.id);
