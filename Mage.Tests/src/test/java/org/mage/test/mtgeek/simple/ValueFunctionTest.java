@@ -154,4 +154,58 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         // 2/2 互杀：score = (5 + 2*1) + (-3 + 2*-1) = 7 - 5 = 2
         assertTrue("2/2 互杀应得正分（trade up 主导），实测=" + score, score > 0);
     }
+
+    // -------------------------------------------------------------------------
+    // Task 10 tests: scoreTarget + scoreYesNo
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scoreTarget_largeOppCreature_betterThanSmall() {
+        addCard(Zone.BATTLEFIELD, playerB, "Centaur Courser", 1);  // 3/3
+        addCard(Zone.BATTLEFIELD, playerB, "Goblin Piker", 1);     // 2/1
+        setStopAt(1, PhaseStep.END_TURN);
+        execute();
+        java.util.Iterator<mage.game.permanent.Permanent> it =
+            currentGame.getBattlefield().getAllActivePermanents(playerB.getId()).iterator();
+        mage.game.permanent.Permanent first = it.next();
+        mage.game.permanent.Permanent second = it.next();
+        double s1 = ValueFunction.scoreTarget(currentGame, null, first.getId(), false);
+        double s2 = ValueFunction.scoreTarget(currentGame, null, second.getId(), false);
+        // 让 power 高的得分更高（不假设 iterator 顺序）
+        boolean firstStronger = first.getPower().getValue() > second.getPower().getValue();
+        if (firstStronger) {
+            assertTrue("大生物 ("+first.getName()+") 分应更高: s1=" + s1 + " s2=" + s2, s1 > s2);
+        } else {
+            assertTrue("大生物 ("+second.getName()+") 分应更高: s1=" + s1 + " s2=" + s2, s2 > s1);
+        }
+    }
+
+    @Test
+    public void scoreTarget_friendlyVsHostile_differentScale() {
+        addCard(Zone.BATTLEFIELD, playerA, "Grizzly Bears", 1);
+        setStopAt(1, PhaseStep.END_TURN);
+        execute();
+        mage.game.permanent.Permanent myBear = currentGame.getBattlefield()
+            .getAllActivePermanents(playerA.getId()).iterator().next();
+        double friendly = ValueFunction.scoreTarget(currentGame, null, myBear.getId(), true);
+        double hostile = ValueFunction.scoreTarget(currentGame, null, myBear.getId(), false);
+        // 同一目标：friendly=buff（小幅正），hostile=remove（更大正）
+        assertTrue("hostile 分应大于 friendly: hostile=" + hostile + " friendly=" + friendly, hostile > friendly);
+    }
+
+    @Test
+    public void scoreYesNo_unknownHint_returnsZero() {
+        setStopAt(1, PhaseStep.END_TURN);
+        execute();
+        double score = ValueFunction.scoreYesNo(currentGame, null, "unknown-prompt");
+        assertEquals("未知 hint 应得 0（保守同 Tians）", 0.0, score, 1e-6);
+    }
+
+    @Test
+    public void scoreYesNo_drawHint_isPositive() {
+        setStopAt(1, PhaseStep.END_TURN);
+        execute();
+        double score = ValueFunction.scoreYesNo(currentGame, null, "Draw a card?");
+        assertTrue("含 draw 的 hint 应得正分: " + score, score > 0);
+    }
 }

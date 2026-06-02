@@ -235,11 +235,42 @@ public final class ValueFunction {
     }
 
     public static double scoreTarget(Game g, UUID source, UUID candidateTarget, boolean isFriendly) {
-        return 0.0; // implemented in Task 10
+        if (candidateTarget == null) return 0.0;
+        Permanent p = g.getPermanent(candidateTarget);
+        if (p == null) {
+            // 目标可能是 player UUID（直伤打脸时）
+            Player pl = g.getPlayer(candidateTarget);
+            if (pl != null && !isFriendly) return Weights.FACE_DAMAGE_PER_POINT;
+            return 0.0;
+        }
+        if (isFriendly) {
+            // buff 自己人：偏好 power 高的
+            return p.getPower().getValue() * Weights.OWN_BOARD_POWER_PER * 0.3;
+        }
+        // 打对手永久物
+        if (p.isPlaneswalker(g)) {
+            return Weights.REMOVE_PLANESWALKER_BASE
+                 + p.getCounters(g).getCount(CounterType.LOYALTY) * Weights.REMOVE_PLANESWALKER_LOYALTY;
+        }
+        if (p.isCreature(g)) {
+            return Weights.REMOVE_CREATURE_BASE + p.getPower().getValue() * Weights.REMOVE_CREATURE_POWER;
+        }
+        return 1.0; // 其它类型（神器/结界）小幅正分
     }
 
     public static double scoreYesNo(Game g, UUID source, String hint) {
-        return 0.0; // implemented in Task 10
+        if (hint == null) return 0.0;
+        String h = hint.toLowerCase();
+        // 已知模式：付生命 → 看当前血量决定
+        if (h.contains("pay") && h.contains("life")) {
+            if (source == null) return 0.0;
+            Player p = g.getPlayer(source);
+            if (p != null && p.getLife() > 10) return 1.0;
+            return -1.0;
+        }
+        if (h.contains("draw")) return Weights.OWN_HAND_PER_CARD;
+        if (h.contains("discard")) return Weights.OWN_HAND_PER_CARD * -0.5;
+        return 0.0; // 未知 hint 保守
     }
 
     public static double scorePass(Game g, UUID self) {
