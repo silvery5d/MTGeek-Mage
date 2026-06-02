@@ -98,8 +98,41 @@ git rebase master   # 或 merge，看冲突情况
 
 **当前 → 未来**：
 - ✅ **B0'（本仓本期）**：地基 —— 构建 + 验牌 + trivial AI + 端到端日志
-- B1'：SimpleAI（Java 移植 Tians 价值函数 → 对战 XMage 默认 ComputerPlayer 或 ComputerPlayer7）
+- ✅ **B1'（已完成）**：SimpleAI —— 值函数驱动可解释 AI（完赛率 ✅；胜率调参留 B1.1）
 - B2'：LLM-Agent（Java AI 经 HTTP 调外部 Python/JS 服务用 MiniMax 决策）
 - B3'：Web 观战页（MTGeek Next.js 接到 fork 的 HTTP 服务）
+
+### B1' （已完成）：SimpleAI 值函数驱动可解释 AI
+
+`MTGeekSimplePlayer` 在 `MTGeekBasePlayer` 基础上加：
+- 7 个 score 方法的 `ValueFunction`（cast/playland/attacker/block/target/yesno/pass）+ 21 种 Effect 子类 `instanceof` 分派
+- MTG-tuned `Weights` 常量表（参 Tians SimpleAI v2，17 个常量分 7 类）
+- 6 个决策钩子 override：`priority` + `selectAttackers` + `selectBlockers` + `chooseTarget` + `chooseMode` + `chooseUse`
+- Lethal 短路 + legacy fallback + 失败-cast 追踪（防止 priority 循环）
+- 结构化 `[Simple|*]` 决策日志（写入 GameLog 与原生事件交织）
+
+跑端到端测试：
+```bash
+mvn test -pl Mage.Tests -Dtest=MTGeekSimpleMatchTest -DfailIfNoTests=false -Djava.awt.headless=true
+```
+match log 输出到 `Mage.Tests/target/simple-vs-trivial-match.log`，含可读 `[Simple|priority]` / `[Simple|selectAttackers]` 等行。
+
+跑统计对战（60 场 ~1.5 分钟）：
+```bash
+mvn test -pl Mage.Tests -Dtest=Tournament -DfailIfNoTests=false -Djava.awt.headless=true
+ls Mage.Tests/target/tournament-results-*.csv
+```
+
+#### 实测验收（30 场样本，2026-06-03）
+
+| 验收项 | 实测 | spec 阈值 | 状态 |
+|---|---|---|---|
+| Simple vs Trivial 完赛率 | 96.7% (29/30) | ≥ 95% | ✅ |
+| Simple vs ComputerPlayer 完赛率 | 100% (30/30) | ≥ 95% | ✅ |
+| Simple vs Trivial 胜率 | 33.3% (10/30) | ≥ 60% | ❌ |
+| match-log 含 [Simple|*] 决策日志 | 是 | 是 | ✅ |
+| B0' 测试无回归 | 21/21 pass | 不破基线 | ✅ |
+
+**胜率未达原因**：当前 Weights 常数对两副真牌（Show-and-Tell combo + Dimir Tempo）的决策偏差大；尤其 SimpleAI 对 combo 牌（Sneak Attack/Show and Tell + Emrakul/Atraxa）的"非线性"价值没法用线性求和体现，spec §10 已预警此结构性限制。**B1.1 后续可专项调参**——本期 B1' 范围内的所有架构、决策钩子、日志体系工作均已完成。
 
 MTGeek 主仓：`~/Documents/claude/MTGeek/`（Next.js 智能问答前端，与本仓解耦）
