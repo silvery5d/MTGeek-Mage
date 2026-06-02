@@ -25,6 +25,7 @@ import mage.abilities.effects.common.search.SearchLibraryPutInPlayEffect;
 import mage.abilities.effects.common.turn.AddExtraTurnControllerEffect;
 import mage.cards.Card;
 import mage.constants.Outcome;
+import mage.counters.CounterType;
 import mage.game.Game;
 import mage.game.permanent.Permanent;
 import mage.players.Player;
@@ -196,11 +197,41 @@ public final class ValueFunction {
     }
 
     public static double scoreAttacker(Game g, Permanent attacker, UUID defender) {
-        return 0.0; // implemented in Task 9
+        if (attacker == null) return 0.0;
+        int power = attacker.getPower().getValue();
+        // 攻击对手脸
+        Player defenderPlayer = g.getPlayer(defender);
+        if (defenderPlayer != null) {
+            return power * Weights.FACE_DAMAGE_PER_POINT;
+        }
+        // 攻击 planeswalker（defender 是 PW UUID）
+        Permanent pw = g.getPermanent(defender);
+        if (pw != null && pw.isPlaneswalker(g)) {
+            int loyalty = pw.getCounters(g).getCount(CounterType.LOYALTY);
+            double score = 0;
+            if (power >= loyalty) score += Weights.REMOVE_PLANESWALKER_BASE;
+            score += Math.min(power, loyalty) * Weights.REMOVE_PLANESWALKER_LOYALTY;
+            return score;
+        }
+        return 0.0;
     }
 
     public static double scoreBlock(Game g, Permanent blocker, Permanent attacker) {
-        return 0.0; // implemented in Task 9
+        if (blocker == null || attacker == null) return 0.0;
+        int myPower = blocker.getPower().getValue();
+        int myTough = blocker.getToughness().getValue();
+        int oppPower = attacker.getPower().getValue();
+        int oppTough = attacker.getToughness().getValue();
+
+        boolean blockerDies = oppPower >= myTough;
+        boolean attackerDies = myPower >= oppTough;
+
+        double score = 0.0;
+        if (attackerDies) score += Weights.REMOVE_CREATURE_BASE + oppPower * Weights.REMOVE_CREATURE_POWER;
+        if (blockerDies)  score += Weights.SELF_KILL_BASE + myPower * Weights.SELF_KILL_POWER;
+        // chump block (只挡不死敌)：blocker 死 attacker 不死，但避免脸 → +oppPower * FACE_DAMAGE * 0.3
+        if (!attackerDies && blockerDies) score += oppPower * Weights.FACE_DAMAGE_PER_POINT * 0.3;
+        return score;
     }
 
     public static double scoreTarget(Game g, UUID source, UUID candidateTarget, boolean isFriendly) {

@@ -108,4 +108,50 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         double score = ValueFunction.scoreCastSpell(currentGame, cs, playerA.getId(), null);
         assertTrue("Counterspell 应得正分，实测=" + score, score >= Weights.COUNTERSPELL_OPPORTUNISM);
     }
+
+    // -------------------------------------------------------------------------
+    // Task 9 tests: scoreAttacker + scoreBlock
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scoreAttacker_attackOpponentFace_scalesWithPower() {
+        addCard(Zone.BATTLEFIELD, playerA, "Grizzly Bears", 1);  // 2/2
+        setStopAt(2, PhaseStep.DECLARE_ATTACKERS);
+        execute();
+        mage.game.permanent.Permanent bear = currentGame.getBattlefield()
+                .getAllActivePermanents(playerA.getId()).iterator().next();
+        double score = ValueFunction.scoreAttacker(currentGame, bear, playerB.getId());
+        assertTrue("攻击对手脸应得高正分，实测=" + score, score >= 10.0);
+    }
+
+    @Test
+    public void scoreBlock_blockKillsAttacker_returnsRemoveBase() {
+        // 我 3/3 阻挡对手 2/1：对手生物被消灭（attackerDies），我不死（!blockerDies）
+        addCard(Zone.BATTLEFIELD, playerA, "Centaur Courser", 1);  // 3/3
+        addCard(Zone.BATTLEFIELD, playerB, "Goblin Piker", 1);     // 2/1
+        setStopAt(2, PhaseStep.DECLARE_BLOCKERS);
+        execute();
+        mage.game.permanent.Permanent blocker = currentGame.getBattlefield()
+                .getAllActivePermanents(playerA.getId()).iterator().next();
+        mage.game.permanent.Permanent attacker = currentGame.getBattlefield()
+                .getAllActivePermanents(playerB.getId()).iterator().next();
+        double score = ValueFunction.scoreBlock(currentGame, blocker, attacker);
+        assertTrue("成功 trade up（消灭更小的）应得正分，实测=" + score, score > 0);
+    }
+
+    @Test
+    public void scoreBlock_blockingMutualKill_isMixed() {
+        // 双方 2/2 互杀：attackerDies+blockerDies 都 true
+        addCard(Zone.BATTLEFIELD, playerA, "Grizzly Bears", 1);  // 2/2
+        addCard(Zone.BATTLEFIELD, playerB, "Grizzly Bears", 1);  // 2/2
+        setStopAt(2, PhaseStep.DECLARE_BLOCKERS);
+        execute();
+        mage.game.permanent.Permanent blocker = currentGame.getBattlefield()
+                .getAllActivePermanents(playerA.getId()).iterator().next();
+        mage.game.permanent.Permanent attacker = currentGame.getBattlefield()
+                .getAllActivePermanents(playerB.getId()).iterator().next();
+        double score = ValueFunction.scoreBlock(currentGame, blocker, attacker);
+        // 2/2 互杀：score = (5 + 2*1) + (-3 + 2*-1) = 7 - 5 = 2
+        assertTrue("2/2 互杀应得正分（trade up 主导），实测=" + score, score > 0);
+    }
 }
