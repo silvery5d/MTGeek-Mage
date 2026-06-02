@@ -3,6 +3,7 @@ package org.mage.test.mtgeek.simple;
 import mage.cards.Card;
 import mage.game.Game;
 import mage.game.permanent.Permanent;
+import mage.players.Player;
 import mage.target.Targets;
 
 import java.util.UUID;
@@ -39,7 +40,10 @@ public final class ValueFunction {
     }
 
     public static double scorePass(Game g, UUID self) {
-        return 0.0; // implemented in Task 7
+        Player p = g.getPlayer(self);
+        if (p == null) return 0.0;
+        int unspent = p.getManaPool().count();
+        return unspent * Weights.UNSPENT_MANA_PENALTY;
     }
 
     private ValueFunction() {}
