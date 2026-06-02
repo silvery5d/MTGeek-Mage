@@ -82,7 +82,9 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         execute();
         mage.cards.Card bolt = playerA.getHand().getCards(currentGame).iterator().next();
         double score = ValueFunction.scoreCastSpell(currentGame, bolt, playerA.getId(), null);
-        assertTrue("damage spell 应得正分，实测=" + score, score > 5.0);
+        // amount=3 → 3*5 = 15, + cmc bonus (1 * CURVE_PLAY_HIGHEST_FIRST).
+        // If resolveAmount still returns 1 (bug), score = 1*5 + cmc ≈ 5.5 — fails this assertion.
+        assertTrue("Lightning Bolt 3-damage 应得 ~15+ 分（amount=3 × 5 + cmc bonus），实测=" + score, score >= 14.0);
     }
 
     @Test

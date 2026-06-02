@@ -37,12 +37,14 @@ public class Tournament extends CardTestPlayerBaseAI {
 
     private static final int N_GAMES = 30;
 
-    private static final String DECK_SIMPLE  = "src/test/resources/mtgeek/show-and-tell.dck";
-    private static final String DECK_TRIVIAL = "src/test/resources/mtgeek/dimir-tempo.dck";
+    private static final String DECK_A = "src/test/resources/mtgeek/show-and-tell.dck";
+    private static final String DECK_B = "src/test/resources/mtgeek/dimir-tempo.dck";
 
     // --- 每局前由 runTournament() 设置 ---
     // 哪个 seat 是 Simple（true → PlayerA 是 Simple）
     private volatile boolean simpleIsPlayerA = true;
+    // true → Simple 用 DECK_A（show-and-tell），false → Simple 用 DECK_B（dimir-tempo）
+    private volatile boolean simpleUseDeckA = true;
     // true → 对手是 MTGeekTrivialPlayer；false → 对手是 ComputerPlayer7
     private volatile boolean useTrivialOpponent = true;
 
@@ -76,7 +78,8 @@ public class Tournament extends CardTestPlayerBaseAI {
     }
 
     // -----------------------------------------------------------------------
-    // 每局创建新游戏：Simple 用 show-and-tell.dck，对手用 dimir-tempo.dck
+    // 每局创建新游戏：deck 随 simpleUseDeckA 交替，与 seat 交替独立，
+    // 确保 Simple 各用两副牌各 15/30 场，隔离 AI 质量与卡组对位偏差。
     // -----------------------------------------------------------------------
     @Override
     protected Game createNewGameAndPlayers() throws GameException, FileNotFoundException {
@@ -86,12 +89,15 @@ public class Tournament extends CardTestPlayerBaseAI {
                 MulliganType.GAME_DEFAULT.getMulligan(0),
                 60, 20, 7);
 
+        String simpleDeck = simpleUseDeckA ? DECK_A : DECK_B;
+        String oppDeck    = simpleUseDeckA ? DECK_B : DECK_A;
+
         if (simpleIsPlayerA) {
-            playerA = createPlayer(game, "PlayerA", DECK_SIMPLE);
-            playerB = createPlayer(game, "PlayerB", DECK_TRIVIAL);
+            playerA = createPlayer(game, "PlayerA", simpleDeck);
+            playerB = createPlayer(game, "PlayerB", oppDeck);
         } else {
-            playerA = createPlayer(game, "PlayerA", DECK_TRIVIAL);
-            playerB = createPlayer(game, "PlayerB", DECK_SIMPLE);
+            playerA = createPlayer(game, "PlayerA", oppDeck);
+            playerB = createPlayer(game, "PlayerB", simpleDeck);
         }
         return game;
     }
@@ -119,12 +125,13 @@ public class Tournament extends CardTestPlayerBaseAI {
     // -----------------------------------------------------------------------
     private void runTournament(String label) throws Exception {
         List<String> csv = new ArrayList<>();
-        csv.add("game_idx,simple_seat,result,turns,error");
+        csv.add("game_idx,simple_seat,simple_deck,result,turns,error");
 
         int simpleWins = 0, oppWins = 0, draws = 0, errors = 0, completed = 0;
 
         for (int i = 0; i < N_GAMES; i++) {
-            simpleIsPlayerA = (i % 2 == 0);  // 交替先后手
+            simpleIsPlayerA = (i % 2 == 0);   // 交替先后手（seat alternation）
+            simpleUseDeckA  = ((i / 2) % 2 == 0);  // 每 2 场交替卡组（deck alternation）
 
             try {
                 // reset() 是 @Before 方法，直接调用可重置游戏状态
@@ -139,15 +146,16 @@ public class Tournament extends CardTestPlayerBaseAI {
                 int turn = currentGame.getTurnNum();
                 String winner = parseWinner(currentGame.getWinner(), simpleIsPlayerA);
 
-                csv.add(String.format("%d,%s,%s,%d,", i,
-                        simpleIsPlayerA ? "PlayerA" : "PlayerB", winner, turn));
+                String deckLabel = simpleUseDeckA ? "show-and-tell" : "dimir-tempo";
+                csv.add(String.format("%d,%s,%s,%s,%d,", i,
+                        simpleIsPlayerA ? "PlayerA" : "PlayerB", deckLabel, winner, turn));
 
                 if ("simple".equals(winner))     simpleWins++;
                 else if ("opp".equals(winner))   oppWins++;
                 else                              draws++;
 
-                System.out.printf("[Tournament] Game %2d/%d  seat=%s  result=%-6s  turn=%d%n",
-                        i + 1, N_GAMES, simpleIsPlayerA ? "A" : "B", winner, turn);
+                System.out.printf("[Tournament] Game %2d/%d  seat=%s  deck=%-15s  result=%-6s  turn=%d%n",
+                        i + 1, N_GAMES, simpleIsPlayerA ? "A" : "B", deckLabel, winner, turn);
 
             } catch (Throwable e) {
                 // Catch both Exception and AssertionError (XMage fires AssertionError via
@@ -156,8 +164,9 @@ public class Tournament extends CardTestPlayerBaseAI {
                 String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().replace(',', ';');
                 // Truncate long messages (priority-loop errors are verbose)
                 if (msg.length() > 120) msg = msg.substring(0, 120) + "...";
-                csv.add(String.format("%d,%s,error,0,%s", i,
-                        simpleIsPlayerA ? "PlayerA" : "PlayerB", msg));
+                String deckLabel = simpleUseDeckA ? "show-and-tell" : "dimir-tempo";
+                csv.add(String.format("%d,%s,%s,error,0,%s", i,
+                        simpleIsPlayerA ? "PlayerA" : "PlayerB", deckLabel, msg));
                 System.err.printf("[Tournament] Game %2d/%d ERROR: %s%n", i + 1, N_GAMES, msg);
             }
         }

@@ -176,18 +176,55 @@ public final class ValueFunction {
     }
 
     /**
-     * Generic amount resolver: tries getAmount(Ability, Game) via reflection,
-     * then falls back to 1 for dynamic/X spells.
+     * Generic amount resolver.
+     *
+     * Strategy:
+     *   1. Walk the class hierarchy looking for a DynamicValue field named "amount"
+     *      (covers DamageTargetEffect, DamageAllEffect, DamagePlayersEffect,
+     *       DrawCardSourceControllerEffect, LoseLifeTargetEffect, DiscardTargetEffect, …).
+     *   2. Fall back to field "life" (GainLifeEffect).
+     *   3. Conservative default of 1 for anything unrecognised.
+     *
+     * The old approach (reflection for getAmount(Ability, Game)) always threw
+     * NoSuchMethodException because those effects store the value as a DynamicValue
+     * field, not a method with that signature.
      */
     private static int resolveAmount(Effect e, Ability source, Game g) {
-        try {
-            java.lang.reflect.Method m = e.getClass().getMethod("getAmount",
-                    Ability.class, Game.class);
-            Object r = m.invoke(e, source, g);
-            if (r instanceof Integer) return (Integer) r;
-            if (r instanceof Number) return ((Number) r).intValue();
-        } catch (Exception ignored) {}
-        return 1; // conservative fallback for dynamic/X values
+        // 试 1：DynamicValue 字段 "amount"（多数效果用这个名称）
+        Object v = readDynamicField(e, "amount");
+        if (v != null) {
+            if (v instanceof mage.abilities.dynamicvalue.DynamicValue) return ((mage.abilities.dynamicvalue.DynamicValue) v).calculate(g, source, e);
+            if (v instanceof Integer) return (Integer) v;
+            if (v instanceof Number) return ((Number) v).intValue();
+        }
+        // 试 2：DynamicValue 字段 "life"（GainLifeEffect 用这个名称）
+        Object lv = readDynamicField(e, "life");
+        if (lv != null) {
+            if (lv instanceof mage.abilities.dynamicvalue.DynamicValue) return ((mage.abilities.dynamicvalue.DynamicValue) lv).calculate(g, source, e);
+            if (lv instanceof Integer) return (Integer) lv;
+            if (lv instanceof Number) return ((Number) lv).intValue();
+        }
+        return 1; // 真没 amount，保守默认
+    }
+
+    /**
+     * Walk the class hierarchy (including superclasses) and return the value of
+     * a field by name, or null if not found.
+     */
+    private static Object readDynamicField(Object obj, String fieldName) {
+        Class<?> cls = obj.getClass();
+        while (cls != null) {
+            try {
+                java.lang.reflect.Field f = cls.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                return f.get(obj);
+            } catch (NoSuchFieldException ignore) {
+                cls = cls.getSuperclass();
+            } catch (Exception other) {
+                return null;
+            }
+        }
+        return null;
     }
 
     public static double scorePlayLand(Game g, Card land, UUID controller) {
