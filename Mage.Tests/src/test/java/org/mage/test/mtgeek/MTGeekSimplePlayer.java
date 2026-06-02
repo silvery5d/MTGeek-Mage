@@ -200,38 +200,55 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
     }
 
     // -----------------------------------------------------------------------
-    // selectAttackers(): lethal-path stub (minimal for T13 test coverage).
-    // Full implementation with scoring happens in Task 14.
+    // selectAttackers(): full per-attacker scored implementation (Task 14).
+    // Attacks all eligible creatures whose scoreAttacker > 0.
     // -----------------------------------------------------------------------
 
     @Override
     public void selectAttackers(Game game, UUID attackingPlayerId) {
         if (!attackingPlayerId.equals(getId())) return;
+        java.util.Set<UUID> opps = game.getOpponents(getId());
+        if (opps.isEmpty()) return;
+        UUID oppId = opps.iterator().next();
 
-        UUID oppId = game.getOpponents(getId()).iterator().next();
-        Player opp = game.getPlayer(oppId);
-        if (opp == null) return;
-
-        // Only attack when lethal is detected — mirrors the priority() check.
-        int totalPower = 0;
-        List<Permanent> candidates = new ArrayList<>();
+        // Enumerate per-attacker candidates with scores.
+        List<AtkCandidate> cands = new ArrayList<>();
         for (Permanent p : game.getBattlefield().getAllActivePermanents(getId())) {
-            if (p.isCreature(game)
-                    && !p.isTapped()
-                    && !p.hasSummoningSickness()
-                    && p.canAttack(oppId, game)) {
-                totalPower += p.getPower().getValue();
-                candidates.add(p);
+            if (!p.isCreature(game) || p.isTapped() || p.hasSummoningSickness()) continue;
+            if (!p.canAttack(oppId, game)) continue;
+            double s = ValueFunction.scoreAttacker(game, p, oppId);
+            cands.add(new AtkCandidate(p.getId(), oppId, s));
+        }
+        if (cands.isEmpty()) return;
+
+        // Declare all attackers with score > 0.
+        int picked = 0;
+        double sumScore = 0;
+        for (AtkCandidate c : cands) {
+            if (c.score > 0) {
+                declareAttacker(c.attackerId, c.defenderId, game, false);
+                picked++;
+                sumScore += c.score;
             }
         }
-        if (totalPower < opp.getLife()) return; // not lethal — wait for Task 14
-
-        for (Permanent attacker : candidates) {
-            declareAttacker(attacker.getId(), oppId, game, false);
+        if (picked > 0) {
+            DecisionLogger.logOnly(game, "selectAttackers",
+                    picked + " attacker(s) declared (of " + cands.size() + " eligible)",
+                    sumScore);
         }
-        DecisionLogger.logOnly(game, "selectAttackers",
-                "Declared " + candidates.size() + " attacker(s) for lethal",
-                Weights.LETHAL_BONUS);
+    }
+
+    /** Immutable attacker candidate for selectAttackers(). */
+    private static final class AtkCandidate {
+        final UUID attackerId;
+        final UUID defenderId;
+        final double score;
+
+        AtkCandidate(UUID attackerId, UUID defenderId, double score) {
+            this.attackerId = attackerId;
+            this.defenderId = defenderId;
+            this.score = score;
+        }
     }
 
     // selectBlockers() / chooseTarget() / chooseMode() / chooseUse() override 在 Task 15-17 添加

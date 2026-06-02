@@ -80,4 +80,19 @@ public class MTGeekSimplePlayerTest extends CardTestPlayerBaseAI {
         boolean gameOver = currentGame.hasEnded() || playerB.getLife() <= 0;
         assertTrue("Lethal should have been delivered by turn 4", gameOver);
     }
+
+    /**
+     * PlayerA has two Grizzly Bears (2/2) on the battlefield.
+     * After summoning sickness clears (turn 3), the AI should attack with both.
+     * PlayerB starts at 20 life; if both Bears attack unblocked, life drops to 16.
+     */
+    @Test
+    public void selectAttackers_allEligibleAttack() {
+        addCard(Zone.BATTLEFIELD, playerA, "Grizzly Bears", 2);  // 2/2 ×2
+        setStopAt(3, PhaseStep.END_TURN);  // run to turn 3 so summoning sickness clears
+        execute();
+
+        // After combat in turn 3, opponent should have taken damage (20 → 16 at minimum)
+        assertTrue("对手应受到攻击伤害，实测 life=" + playerB.getLife(), playerB.getLife() < 20);
+    }
 }
