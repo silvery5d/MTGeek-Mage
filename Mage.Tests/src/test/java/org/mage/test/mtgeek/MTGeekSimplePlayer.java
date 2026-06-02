@@ -331,5 +331,47 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         return false;
     }
 
-    // chooseMode() / chooseUse() override 在 Task 17 添加
+    // ── Task 17: chooseMode + chooseUse ──────────────────────────────────────
+
+    @Override
+    public mage.abilities.Mode chooseMode(mage.abilities.Modes modes,
+                                          Ability source, Game game) {
+        java.util.Collection<mage.abilities.Mode> available = modes.getAvailableModes(source, game);
+        if (available == null || available.isEmpty()) return null;
+        if (available.size() == 1) return available.iterator().next();
+        mage.abilities.Mode best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (mage.abilities.Mode m : available) {
+            double s = 0;
+            for (mage.abilities.effects.Effect e : m.getEffects()) {
+                s += ValueFunction.scoreEffectPublic(e, source, game);
+            }
+            if (s > bestScore) {
+                bestScore = s;
+                best = m;
+            }
+        }
+        DecisionLogger.logOnly(game, "chooseMode",
+                "mode score=" + String.format("%.2f", bestScore) + " (of " + available.size() + ")",
+                bestScore);
+        return best;
+    }
+
+    @Override
+    public boolean chooseUse(Outcome outcome, String message,
+                             Ability source, Game game) {
+        UUID sourceId = source == null ? null : source.getSourceId();
+        double s = ValueFunction.scoreYesNo(game, sourceId, message);
+        boolean yes = s > 0;
+        DecisionLogger.logOnly(game, "chooseUse",
+                (yes ? "YES" : "NO") + " (\"" + message + "\")", s);
+        return yes;
+    }
+
+    @Override
+    public boolean chooseUse(Outcome outcome, String message, String secondMessage,
+                             String trueText, String falseText,
+                             Ability source, Game game) {
+        return chooseUse(outcome, message, source, game);
+    }
 }

@@ -280,5 +280,12 @@ public final class ValueFunction {
         return unspent * Weights.UNSPENT_MANA_PENALTY;
     }
 
+    /**
+     * Public surface so MTGeekSimplePlayer.chooseMode can score per-mode effects.
+     */
+    public static double scoreEffectPublic(Effect e, Ability source, Game g) {
+        return scoreEffect(e, source, g);
+    }
+
     private ValueFunction() {}
 }
