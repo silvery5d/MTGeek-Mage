@@ -251,5 +251,40 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         }
     }
 
-    // selectBlockers() / chooseTarget() / chooseMode() / chooseUse() override 在 Task 15-17 添加
+    // -----------------------------------------------------------------------
+    // selectBlockers(): per-attacker scored blocker assignment (Task 15).
+    // For each incoming attacker, find the best eligible blocker via scoreBlock.
+    // -----------------------------------------------------------------------
+
+    @Override
+    public void selectBlockers(mage.abilities.Ability source, Game game, UUID defendingPlayerId) {
+        if (!defendingPlayerId.equals(getId())) return;
+
+        java.util.Set<UUID> attackerIds = game.getCombat().getAttackers();
+        if (attackerIds == null || attackerIds.isEmpty()) return;
+
+        for (UUID attackerId : attackerIds) {
+            Permanent attacker = game.getPermanent(attackerId);
+            if (attacker == null) continue;
+
+            Permanent bestBlocker = null;
+            double bestScore = 0;
+            for (Permanent candidate : game.getBattlefield().getAllActivePermanents(getId())) {
+                if (!candidate.isCreature(game) || candidate.isTapped()) continue;
+                if (candidate.getBlocking() != 0) continue; // already blocking another attacker
+                double s = ValueFunction.scoreBlock(game, candidate, attacker);
+                if (s > bestScore) {
+                    bestScore = s;
+                    bestBlocker = candidate;
+                }
+            }
+            if (bestBlocker != null) {
+                this.declareBlocker(getId(), bestBlocker.getId(), attackerId, game);
+                DecisionLogger.logOnly(game, "selectBlockers",
+                        bestBlocker.getName() + " blocks " + attacker.getName(), bestScore);
+            }
+        }
+    }
+
+    // chooseTarget() / chooseMode() / chooseUse() override 在 Task 16-17 添加
 }

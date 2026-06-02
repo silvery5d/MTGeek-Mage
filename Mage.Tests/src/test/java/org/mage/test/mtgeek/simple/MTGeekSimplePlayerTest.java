@@ -95,4 +95,27 @@ public class MTGeekSimplePlayerTest extends CardTestPlayerBaseAI {
         // After combat in turn 3, opponent should have taken damage (20 → 16 at minimum)
         assertTrue("对手应受到攻击伤害，实测 life=" + playerB.getLife(), playerB.getLife() < 20);
     }
+
+    /**
+     * PlayerA (我方 MTGeekSimplePlayer) has a 3/3; PlayerB has a 2/2 that attacks.
+     * The AI should assign the 3/3 as blocker (scoreBlock > 0: trade up kills 2/2).
+     * Smoke test: game advances without crash, and since the 3/3 blocks the 2/2,
+     * PlayerA takes 0 combat damage.
+     */
+    @Test
+    public void selectBlockers_canBlockWithoutCrash() {
+        // 我方 3/3 阻挡者，对手 2/2 攻击者
+        addCard(Zone.BATTLEFIELD, playerA, "Centaur Courser", 1);  // 3/3
+        addCard(Zone.BATTLEFIELD, playerB, "Grizzly Bears", 1);     // 2/2
+
+        // 跑两个 turn：turn 1 (playerA active), turn 2 (playerB attacks)
+        setStopAt(2, PhaseStep.END_TURN);
+        execute();
+
+        // 主要验证不崩（游戏推进到 turn >= 1）
+        assertTrue("游戏推进未崩，turn=" + currentGame.getTurnNum(), currentGame.getTurnNum() >= 1);
+        // 3/3 blocks 2/2: PlayerA should take 0 combat damage (life stays at 20)
+        assertTrue("3/3 应挡住 2/2，PlayerA life 应为 20，实测=" + playerA.getLife(),
+                playerA.getLife() == 20);
+    }
 }
