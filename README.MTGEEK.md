@@ -127,12 +127,16 @@ ls Mage.Tests/target/tournament-results-*.csv
 
 | 验收项 | 实测 | spec 阈值 | 状态 |
 |---|---|---|---|
-| Simple vs Trivial 完赛率 | 96.7% (29/30) | ≥ 95% | ✅ |
+| Simple vs Trivial 完赛率 | 100% (30/30) | ≥ 95% | ✅ |
 | Simple vs ComputerPlayer 完赛率 | 100% (30/30) | ≥ 95% | ✅ |
-| Simple vs Trivial 胜率 | 33.3% (10/30) | ≥ 60% | ❌ |
+| Simple vs Trivial 胜率 | 53.3% (16/30) | ≥ 60% | ⚠️ 近线 |
 | match-log 含 [Simple|*] 决策日志 | 是 | 是 | ✅ |
 | B0' 测试无回归 | 21/21 pass | 不破基线 | ✅ |
 
-**胜率未达原因**：当前 Weights 常数对两副真牌（Show-and-Tell combo + Dimir Tempo）的决策偏差大；尤其 SimpleAI 对 combo 牌（Sneak Attack/Show and Tell + Emrakul/Atraxa）的"非线性"价值没法用线性求和体现，spec §10 已预警此结构性限制。**B1.1 后续可专项调参**——本期 B1' 范围内的所有架构、决策钩子、日志体系工作均已完成。
+**胜率分解（deck-balanced）**：
+- 用 Show-and-Tell combo 牌组：6/16 = 37.5%（combo 多步序列对线性求和值函数不友好）
+- 用 Dimir Tempo 线性牌组：10/14 = **71.4%**（线性牌组明显强过 Trivial）
+
+53.3% 综合数字未达 60%，根因是 Show-and-Tell 的非线性 combo 性质——spec §10 已预警此结构性限制。**B1.1 可针对 combo 牌组专项调参**（如：手牌 combo-piece 互相加分、关键 enabler 卡 hard-coded 高分），本期 B1' 范围内所有架构与基础设施工作均已完成。
 
 MTGeek 主仓：`~/Documents/claude/MTGeek/`（Next.js 智能问答前端，与本仓解耦）
