@@ -9,7 +9,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * TDD tests for ValueFunction.scorePass — B1' SimpleAI Task 7.
+ * TDD tests for ValueFunction — B1' SimpleAI Tasks 7 + 8.
+ *
+ * Task 7: scorePass (mana-penalty)
+ * Task 8: scorePlayLand + scoreCastSpell + effect handler dict
  *
  * Mana-injection strategy: "Omnath, Locus of Mana" keeps green mana from
  * emptying at end of step, so we can observe unspent mana after execute().
@@ -54,5 +57,55 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         assertTrue("3 unspent mana should yield negative score, got: " + score, score < 0);
         // 3 * -1.5 = -4.5
         assertEquals("3 unspent green mana (held by Omnath): 3 * -1.5 = -4.5", -4.5, score, 1e-6);
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 8 tests: scorePlayLand + scoreCastSpell
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scorePlayLand_anyLand_returnsModestPositive() {
+        addCard(Zone.HAND, playerA, "Island", 1);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card island = playerA.getHand().getCards(currentGame).iterator().next();
+        double score = ValueFunction.scorePlayLand(currentGame, island, playerA.getId());
+        assertTrue("playLand 应得正分，实测=" + score, score > 0);
+    }
+
+    @Test
+    public void scoreCastSpell_damageSpell_returnsPositive() {
+        // Lightning Bolt = "deal 3 damage to any target" — score should be positive (damage dispatch)
+        addCard(Zone.HAND, playerA, "Lightning Bolt", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Mountain", 1);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card bolt = playerA.getHand().getCards(currentGame).iterator().next();
+        double score = ValueFunction.scoreCastSpell(currentGame, bolt, playerA.getId(), null);
+        assertTrue("damage spell 应得正分，实测=" + score, score > 5.0);
+    }
+
+    @Test
+    public void scoreCastSpell_drawSpell_returnsPositive() {
+        // Brainstorm = "draw 3 cards then put 2 back" — score should be positive (draw dispatch)
+        addCard(Zone.HAND, playerA, "Brainstorm", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Island", 1);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card brainstorm = playerA.getHand().getCards(currentGame).iterator().next();
+        double score = ValueFunction.scoreCastSpell(currentGame, brainstorm, playerA.getId(), null);
+        assertTrue("draw spell 应得正分，实测=" + score, score > 0);
+    }
+
+    @Test
+    public void scoreCastSpell_counterspell_returnsCounterspellOpportunism() {
+        // Counterspell = "counter target spell" — score should reflect COUNTERSPELL_OPPORTUNISM
+        addCard(Zone.HAND, playerA, "Counterspell", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Island", 2);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card cs = playerA.getHand().getCards(currentGame).iterator().next();
+        double score = ValueFunction.scoreCastSpell(currentGame, cs, playerA.getId(), null);
+        assertTrue("Counterspell 应得正分，实测=" + score, score >= Weights.COUNTERSPELL_OPPORTUNISM);
     }
 }
