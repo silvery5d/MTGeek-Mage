@@ -94,7 +94,14 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         List<ActivatedAbility> playable = getPlayable(game, true);
         // Filter 1: drop mana abilities — activating them adds mana but doesn't
         // advance priority (XMage re-invokes priority on same player immediately).
-        playable.removeIf(ab -> ab instanceof ActivatedManaAbilityImpl);
+        // Exception: sacrifice-mana abilities (Lotus Petal 类) are one-shot and
+        // cannot loop, so we keep them for consideration.
+        playable.removeIf(ab -> {
+            if (!(ab instanceof ActivatedManaAbilityImpl)) return false;
+            boolean hasSacrificeCost = ab.getCosts().stream()
+                .anyMatch(c -> c instanceof mage.abilities.costs.common.SacrificeSourceCost);
+            return !hasSacrificeCost; // land tap-mana (no sac cost) → filter out
+        });
         // Filter 2: drop spells/abilities whose sourceId has already failed
         // activateAbility() this turn (e.g. Surgical Extraction with no targets).
         playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
