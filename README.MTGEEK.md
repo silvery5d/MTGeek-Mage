@@ -99,6 +99,7 @@ git rebase master   # 或 merge，看冲突情况
 **当前 → 未来**：
 - ✅ **B0'（本仓本期）**：地基 —— 构建 + 验牌 + trivial AI + 端到端日志
 - ✅ **B1'（已完成）**：SimpleAI —— 值函数驱动可解释 AI（完赛率 ✅；胜率调参留 B1.1）
+- ✅ **B1.1（已完成）**：调参与逻辑补全 —— Show-and-Tell 37.5%→50%，综合 53.3%→63.3%
 - B2'：LLM-Agent（Java AI 经 HTTP 调外部 Python/JS 服务用 MiniMax 决策）
 - B3'：Web 观战页（MTGeek Next.js 接到 fork 的 HTTP 服务）
 
@@ -138,5 +139,28 @@ ls Mage.Tests/target/tournament-results-*.csv
 - 用 Dimir Tempo 线性牌组：10/14 = **71.4%**（线性牌组明显强过 Trivial）
 
 53.3% 综合数字未达 60%，根因是 Show-and-Tell 的非线性 combo 性质——spec §10 已预警此结构性限制。**B1.1 可针对 combo 牌组专项调参**（如：手牌 combo-piece 互相加分、关键 enabler 卡 hard-coded 高分），本期 B1' 范围内所有架构与基础设施工作均已完成。
+
+### B1.1 （已完成）：调参与逻辑补全 — 修 Show-and-Tell 偏弱
+
+针对 B1' Tournament 暴露的 Show-and-Tell 37.5% 偏弱问题，做的 4 层修复：
+- **Layer A**：`ValueFunction` 加 `PutCardFromHandOntoBattlefieldEffect`（+ Show and Tell 走 Outcome 兜底）/ `CounterUnlessPaysEffect` handler；放行 sacrifice-mana abilities（Lotus Petal）
+- **Layer B**：新增 `choose(Outcome, Cards, TargetCard, ...)` override
+- **Layer C**：`ValueFunction.scoreHandCardAsThreat` 助手（P+T×2+T + CMC + keyword 子串识别）
+- **Layer D**：4 个 Weights 微调（`PUT_FROM_HAND_PAYOFF=8.0`；TUTOR 3→5；LIFE_LOSS -1→-0.5；FACE 10→12）
+- **Bonus fix**（首轮 Tournament 暴露的回归）：`chooseUse` 对"from hand onto battlefield"类问句返 YES；`chooseTarget` 识别 `TargetCardInHand` 用 `scoreHandCardAsThreat` 排序
+
+#### 实测验收（30 场样本，2026-06-03）
+
+| 项 | B1' 基线 | B1.1 实测 | spec 阈值 | 状态 |
+|---|---|---|---|---|
+| Show-and-Tell 胜率 | 37.5% | **50.0%** (8/16) | ≥ 50% | ✅ |
+| Dimir 胜率 | 71.4% | **78.6%** (11/14) | ≥ 60% | ✅ |
+| 综合 Simple vs Trivial | 53.3% | **63.3%** (19/30) | ≥ 55% | ✅ |
+| Simple vs Trivial 完赛率 | 100% | **100%** (30/30) | 维持 100% | ✅ |
+| Simple vs ComputerPlayer 完赛率 | 100% | **100%** (30/30) | ≥ 95% | ✅ |
+| Simple vs ComputerPlayer 胜率 | 23.3% | **36.7%** (11/30) | — | ↑ |
+| 既有 21+ 项测试 | GREEN | GREEN | 不破基线 | ✅ |
+
+**关键调试发现**：首轮 Tournament 出现明显回归（Show-and-Tell 跌到 12.5%），诊断发现根因不是数值调参错而是 `chooseUse`/`chooseTarget` 对 Show-and-Tell 类卡的路径未覆盖——SimpleAI 在被问到"要把手牌放上场吗？"时返 NO，等于主动拒绝整个 combo。修复后回归消除并显著超越 B1' 基线。这次发现验证了 spec §7.4"迭代预案"的价值——单跑 Tournament 是发现这类 sequencing bug 的关键手段。
 
 MTGeek 主仓：`~/Documents/claude/MTGeek/`（Next.js 智能问答前端，与本仓解耦）
