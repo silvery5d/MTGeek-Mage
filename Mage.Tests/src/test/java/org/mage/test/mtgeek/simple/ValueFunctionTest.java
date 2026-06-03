@@ -269,4 +269,20 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         assertTrue("Show and Tell with Emrakul in hand should score high, got " + score,
             score >= 25.0);
     }
+
+    // -------------------------------------------------------------------------
+    // Task 4 tests: Layer A.2 — CounterUnlessPays handler (Spell Pierce / Mana Leak style)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scoreCastSpell_spellPierce_scoresCounterUnlessPays() {
+        addCard(Zone.HAND, playerA, "Spell Pierce", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Island", 1);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card sp = playerA.getHand().getCards(currentGame).iterator().next();
+        double score = ValueFunction.scoreCastSpell(currentGame, sp, playerA.getId(), null);
+        // COUNTERSPELL_OPPORTUNISM=4 * 0.7 = 2.8，加 cmc bonus 1*0.5=0.5，期望 ≥ 2.5
+        assertTrue("Spell Pierce 应得 conditional-counter 分数: " + score, score >= 2.5);
+    }
 }
