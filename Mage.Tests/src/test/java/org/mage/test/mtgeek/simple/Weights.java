@@ -6,7 +6,7 @@ package org.mage.test.mtgeek.simple;
  */
 public final class Weights {
     // 1) 致命路径
-    public static final double FACE_DAMAGE_PER_POINT      = 10.0;
+    public static final double FACE_DAMAGE_PER_POINT      = 12.0;  // B1.1: 10.0 → 12.0
     public static final double LETHAL_BONUS               = 1000.0;
 
     // 2) 移除对方
@@ -26,13 +26,14 @@ public final class Weights {
 
     // 5) 资源
     public static final double UNSPENT_MANA_PENALTY       = -1.5;
-    public static final double LIFE_LOSS_PER_POINT        = -1.0;
+    public static final double LIFE_LOSS_PER_POINT        = -0.5;  // B1.1: -1.0 → -0.5
     public static final double LIBRARY_SIZE_DANGER        = -5.0;
 
     // 6) MTG 特殊
     public static final double EXTRA_TURN_BASE            = 50.0;
     public static final double COUNTERSPELL_OPPORTUNISM   = 4.0;
-    public static final double TUTOR_VALUE                = 3.0;
+    public static final double TUTOR_VALUE                = 5.0;  // B1.1: 3.0 → 5.0
+    public static final double PUT_FROM_HAND_PAYOFF       = 8.0;  // B1.1 新增：Show and Tell 类 effect
 
     // 7) 调度
     public static final double CURVE_PLAY_HIGHEST_FIRST   = 0.5;
