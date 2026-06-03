@@ -210,4 +210,41 @@ public class ValueFunctionTest extends CardTestPlayerBase {
         double score = ValueFunction.scoreYesNo(currentGame, null, "Draw a card?");
         assertTrue("含 draw 的 hint 应得正分: " + score, score > 0);
     }
+
+    // -------------------------------------------------------------------------
+    // Task 2 tests: scoreHandCardAsThreat (Layer C)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scoreHandCardAsThreat_emrakulHigherThanLotusPetal() {
+        addCard(Zone.HAND, playerA, "Emrakul, the Aeons Torn", 1);
+        addCard(Zone.HAND, playerA, "Lotus Petal", 1);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card emrakul = null, petal = null;
+        for (mage.cards.Card c : playerA.getHand().getCards(currentGame)) {
+            if (c.getName().equals("Emrakul, the Aeons Torn")) emrakul = c;
+            if (c.getName().equals("Lotus Petal")) petal = c;
+        }
+        double emrakulScore = ValueFunction.scoreHandCardAsThreat(emrakul, currentGame);
+        double petalScore   = ValueFunction.scoreHandCardAsThreat(petal,   currentGame);
+        assertTrue("Emrakul (15/15, Annihilator 6) should score >> Lotus Petal: emrakul=" + emrakulScore + " petal=" + petalScore,
+            emrakulScore > petalScore + 20);
+    }
+
+    @Test
+    public void scoreHandCardAsThreat_creatureScalesWithPower() {
+        addCard(Zone.HAND, playerA, "Grizzly Bears", 1);     // 2/2
+        addCard(Zone.HAND, playerA, "Centaur Courser", 1);   // 3/3
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card bears = null, courser = null;
+        for (mage.cards.Card c : playerA.getHand().getCards(currentGame)) {
+            if (c.getName().equals("Grizzly Bears")) bears = c;
+            if (c.getName().equals("Centaur Courser")) courser = c;
+        }
+        assertTrue("3/3 应比 2/2 评分高",
+            ValueFunction.scoreHandCardAsThreat(courser, currentGame) >
+            ValueFunction.scoreHandCardAsThreat(bears, currentGame));
+    }
 }

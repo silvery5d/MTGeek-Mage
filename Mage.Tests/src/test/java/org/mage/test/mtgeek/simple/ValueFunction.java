@@ -317,6 +317,34 @@ public final class ValueFunction {
         return unspent * Weights.UNSPENT_MANA_PENALTY;
     }
 
+    /** Layer C: 评估一张手牌"如果上场"的威胁度。Layer B chooseFromHand 与
+     *  Layer A.1 PutFromHand effect handler 共用。 */
+    public static double scoreHandCardAsThreat(Card c, Game g) {
+        if (c == null) return 0;
+        double s = 0;
+        if (c.isCreature(g)) {
+            try {
+                s += c.getPower().getValue() * 2 + c.getToughness().getValue();
+            } catch (Exception ignored) {}
+        }
+        if (c.isPlaneswalker(g)) s += 10;
+        s += c.getManaValue() * 0.5;
+
+        String oracle;
+        try {
+            oracle = String.join(" ", c.getRules(g)).toLowerCase();
+        } catch (Exception e) {
+            oracle = "";
+        }
+        if (oracle.contains("annihilator")) s += 20;
+        if (oracle.contains("extra turn") || oracle.contains("extra turns")) s += 15;
+        if (oracle.contains("trample")) s += 2;
+        if (oracle.contains("flying")) s += 1;
+        if (oracle.contains("hexproof") || oracle.contains("shroud")) s += 3;
+        if (oracle.contains("indestructible")) s += 5;
+        return s;
+    }
+
     /**
      * Public surface so MTGeekSimplePlayer.chooseMode can score per-mode effects.
      */
