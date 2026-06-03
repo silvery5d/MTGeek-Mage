@@ -332,6 +332,9 @@ public final class ValueFunction {
         }
         if (h.contains("draw")) return Weights.OWN_HAND_PER_CARD;
         if (h.contains("discard")) return Weights.OWN_HAND_PER_CARD * -0.5;
+        // Show and Tell 类: "put ... from hand onto the battlefield" — always YES
+        // (we want to cheat our biggest threat onto the battlefield for free)
+        if (h.contains("onto the battlefield") || h.contains("from hand")) return Weights.PUT_FROM_HAND_PAYOFF;
         return 0.0; // 未知 hint 保守
     }
 

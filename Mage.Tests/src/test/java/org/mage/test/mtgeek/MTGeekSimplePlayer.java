@@ -8,11 +8,13 @@ import mage.cards.Cards;
 import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
+import mage.constants.Zone;
 import mage.game.Game;
 import mage.game.permanent.Permanent;
 import mage.players.Player;
 import mage.target.Target;
 import mage.target.TargetCard;
+import mage.target.common.TargetCardInHand;
 import org.mage.test.mtgeek.simple.DecisionLogger;
 import org.mage.test.mtgeek.simple.ValueFunction;
 import org.mage.test.mtgeek.simple.Weights;
@@ -407,11 +409,46 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             return true;
         }
 
-        // Multiple candidates: score each and pick the best.
-        boolean isFriendly = outcome.isGood();
+        // Detect hand-card targets (e.g. Show and Tell TargetCardInHand):
+        // scoreTarget() can only handle permanents/players; for hand cards we
+        // must use scoreHandCardAsThreat so we pick the biggest payoff.
+        boolean isHandTarget = target instanceof TargetCardInHand
+                || (possible.stream().anyMatch(id ->
+                        game.getState().getZone(id) == Zone.HAND));
+
         UUID sourceId = source == null ? null : source.getSourceId();
+        boolean isFriendly = outcome.isGood();
         UUID best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
+
+        if (isHandTarget) {
+            // Pick the highest-threat card from hand (favorable outcome = put big thing down).
+            // For unfavorable outcomes (Discard etc.) we want lowest threat,
+            // but for all Put-onto-battlefield outcomes we always want max.
+            boolean pickMax = isOutcomeFavorable(outcome);
+            for (UUID id : possible) {
+                Card c = game.getCard(id);
+                if (c == null) continue;
+                double s = ValueFunction.scoreHandCardAsThreat(c, game);
+                double adjusted = pickMax ? s : -s; // invert for discard-like outcomes
+                if (adjusted > bestScore) {
+                    bestScore = adjusted;
+                    best = id;
+                }
+            }
+            if (best != null) {
+                target.addTarget(best, source, game);
+                Card bc = game.getCard(best);
+                DecisionLogger.logOnly(game, "chooseTarget",
+                        (pickMax ? "handMax" : "handMin") + " \""
+                                + (bc != null ? bc.getName() : best.toString().substring(0, 8))
+                                + "\", possible=" + possible.size(),
+                        Math.abs(bestScore));
+                return true;
+            }
+        }
+
+        // Multiple candidates: score each and pick the best.
         for (UUID id : possible) {
             double s = ValueFunction.scoreTarget(game, sourceId, id, isFriendly);
             if (s > bestScore) {
