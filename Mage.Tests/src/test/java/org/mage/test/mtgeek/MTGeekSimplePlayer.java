@@ -4,6 +4,7 @@ import mage.abilities.Ability;
 import mage.abilities.ActivatedAbility;
 import mage.abilities.mana.ActivatedManaAbilityImpl;
 import mage.cards.Card;
+import mage.cards.Cards;
 import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
@@ -11,6 +12,7 @@ import mage.game.Game;
 import mage.game.permanent.Permanent;
 import mage.players.Player;
 import mage.target.Target;
+import mage.target.TargetCard;
 import org.mage.test.mtgeek.simple.DecisionLogger;
 import org.mage.test.mtgeek.simple.ValueFunction;
 import org.mage.test.mtgeek.simple.Weights;
@@ -329,6 +331,62 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
                         bestBlocker.getName() + " blocks " + attacker.getName(), bestScore);
             }
         }
+    }
+
+    // ── Task 6 (Layer B): choose(Outcome, Cards, TargetCard, ...) — hand-card pick ──
+
+    /**
+     * Overrides the "choose from hand" decision used by effects like Show and Tell
+     * ("put a permanent from your hand onto the battlefield").
+     *
+     * Strategy: score each card via ValueFunction.scoreHandCardAsThreat, then pick
+     * the highest-scored card(s) for favorable outcomes (PutCreatureInPlay etc.)
+     * or the lowest-scored card(s) for unfavorable outcomes (Discard etc.).
+     */
+    @Override
+    public boolean choose(Outcome outcome, Cards cards, TargetCard target,
+                          Ability source, Game game) {
+        if (cards == null || cards.isEmpty()) return false;
+
+        int needed = target.getMaxNumberOfTargets();
+        if (needed <= 0) needed = 1;
+
+        boolean pickMax = isOutcomeFavorable(outcome);
+        java.util.List<Card> sorted = new java.util.ArrayList<>(cards.getCards(game));
+        sorted.sort((a, b) -> {
+            double sa = ValueFunction.scoreHandCardAsThreat(a, game);
+            double sb = ValueFunction.scoreHandCardAsThreat(b, game);
+            return pickMax ? Double.compare(sb, sa) : Double.compare(sa, sb);
+        });
+
+        int picked = 0;
+        for (Card c : sorted) {
+            if (picked >= needed) break;
+            target.add(c.getId(), game);
+            picked++;
+        }
+        if (!sorted.isEmpty()) {
+            DecisionLogger.logOnly(game, "chooseFromHand",
+                    (pickMax ? "PUT max" : "DROP min") + " " + picked + "/" + cards.size()
+                            + " \"" + sorted.get(0).getName() + "\"",
+                    ValueFunction.scoreHandCardAsThreat(sorted.get(0), game));
+        }
+        return picked > 0;
+    }
+
+    /**
+     * Returns true when the outcome is favorable for us (we want to pick
+     * the best/most-threatening card). Uses the enum's own isGood() flag as
+     * the primary signal, but forces a few "anyTargetHasSameValue" outcomes
+     * (PutCardInPlay, PlayForFree, Copy) that are always good for the caster.
+     */
+    private static boolean isOutcomeFavorable(Outcome outcome) {
+        // Outcomes explicitly tagged as good for the targeting player
+        if (outcome.isGood()) return true;
+        // GainControl is tagged false (good for the controller of the effect,
+        // bad for the target owner) — but when *we* choose from our hand it is
+        // always favorable, so include it explicitly.
+        return outcome == Outcome.GainControl;
     }
 
     // ── Task 16: chooseTarget (most-common overload) ──────────────────────────
