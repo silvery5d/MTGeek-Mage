@@ -247,4 +247,26 @@ public class ValueFunctionTest extends CardTestPlayerBase {
             ValueFunction.scoreHandCardAsThreat(courser, currentGame) >
             ValueFunction.scoreHandCardAsThreat(bears, currentGame));
     }
+
+    // -------------------------------------------------------------------------
+    // Task 3 tests: Layer A.1 — PutFromHand effect handler (Show and Tell, Sneak Attack)
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void scoreCastSpell_showAndTell_scoresWithThreatBonus() {
+        addCard(Zone.HAND, playerA, "Show and Tell", 1);
+        addCard(Zone.HAND, playerA, "Emrakul, the Aeons Torn", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Ancient Tomb", 2);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+        mage.cards.Card showAndTell = null;
+        for (mage.cards.Card c : playerA.getHand().getCards(currentGame)) {
+            if (c.getName().equals("Show and Tell")) showAndTell = c;
+        }
+        double score = ValueFunction.scoreCastSpell(currentGame, showAndTell, playerA.getId(), null);
+        // 基础 PUT_FROM_HAND_PAYOFF=8 + Emrakul threat (~52) * 0.5 ≈ 8+26 = 34；
+        // 加 cmc bonus 3*0.5=1.5 → 期望 ≥ 25 是保守阈值
+        assertTrue("Show and Tell with Emrakul in hand should score high, got " + score,
+            score >= 25.0);
+    }
 }

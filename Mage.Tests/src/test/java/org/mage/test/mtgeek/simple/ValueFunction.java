@@ -14,6 +14,10 @@ import mage.abilities.effects.common.DestroyTargetEffect;
 import mage.abilities.effects.common.DrawCardSourceControllerEffect;
 import mage.abilities.effects.common.ExileTargetEffect;
 import mage.abilities.effects.common.GainLifeEffect;
+import mage.abilities.effects.common.PutCardFromHandOntoBattlefieldEffect;
+import mage.abilities.effects.common.PutCardFromHandOrGraveyardOntoBattlefieldEffect;
+import mage.abilities.effects.common.PutCardIntoPlayWithHasteAndSacrificeEffect;
+import mage.abilities.effects.common.PutCreatureAndOrLandFromHandOntoBattlefieldEffect;
 import mage.abilities.effects.common.LoseLifeTargetEffect;
 import mage.abilities.effects.common.MillCardsTargetEffect;
 import mage.abilities.effects.common.ReturnToHandTargetEffect;
@@ -107,6 +111,27 @@ public final class ValueFunction {
         // --- Exile ---
         if (e instanceof ExileTargetEffect) {
             return Weights.REMOVE_CREATURE_BASE + 1.0; // exile > destroy
+        }
+
+        // --- Layer A.1: Put-from-hand onto battlefield (Show and Tell 类、Sneak Attack 类) ---
+        // 基础奖励 PUT_FROM_HAND_PAYOFF + 控制者手牌中最佳威胁度的 50% 加成
+        if (e instanceof PutCardFromHandOntoBattlefieldEffect
+                || e instanceof PutCreatureAndOrLandFromHandOntoBattlefieldEffect
+                || e instanceof PutCardFromHandOrGraveyardOntoBattlefieldEffect
+                || e instanceof PutCardIntoPlayWithHasteAndSacrificeEffect
+                || e.getOutcome() == Outcome.PutCardInPlay) {
+            double base = Weights.PUT_FROM_HAND_PAYOFF;
+            UUID controllerId = source.getControllerId();
+            Player controller = g.getPlayer(controllerId);
+            if (controller != null) {
+                double bestThreat = 0;
+                for (Card hc : controller.getHand().getCards(g)) {
+                    double t = scoreHandCardAsThreat(hc, g);
+                    if (t > bestThreat) bestThreat = t;
+                }
+                base += bestThreat * 0.5;
+            }
+            return base;
         }
 
         // --- Sacrifice (check subclass before parent) ---
