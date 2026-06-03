@@ -35,6 +35,11 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) (loses|gains) (\\d+) life$"
     );
 
+    // Turn 5 (or "Turn 5: PlayerA")
+    private static final Pattern P_TURN = Pattern.compile(
+            "^Turn (\\d+).*"
+    );
+
     private final List<ReplayEvent> events = new ArrayList<>();
     private int counter = 0;
     private int currentTurn = 0;
@@ -99,8 +104,20 @@ public class MatchRecorder extends EmptyDataCollector {
             return ev;
         }
 
+        // For all XMage-native log lines: strip HTML tags + trailing [hex-suffix] codes
+        String clean = msg.replaceAll("<[^>]+>", "")          // strip HTML tags
+                          .replaceAll("\\s*\\[[0-9a-f]{3,}\\]", "") // strip trailing [hex-suffix]
+                          .trim();
+
+        // --- turn tracking ---
+        Matcher mTurn = P_TURN.matcher(clean);
+        if (mTurn.matches()) {
+            currentTurn = Integer.parseInt(mTurn.group(1));
+            return null; // turn-start lines don't emit an event
+        }
+
         // --- play_land ---
-        m = P_PLAYS_LAND.matcher(msg);
+        m = P_PLAYS_LAND.matcher(clean);
         if (m.matches()) {
             ReplayEvent ev = new ReplayEvent(0, 0, "play_land");
             ev.actor = resolveActor(m.group(1));
@@ -111,7 +128,7 @@ public class MatchRecorder extends EmptyDataCollector {
         }
 
         // --- cast_spell ---
-        m = P_CASTS_SPELL.matcher(msg);
+        m = P_CASTS_SPELL.matcher(clean);
         if (m.matches()) {
             ReplayEvent ev = new ReplayEvent(0, 0, "cast_spell");
             ev.actor = resolveActor(m.group(1));
@@ -122,7 +139,7 @@ public class MatchRecorder extends EmptyDataCollector {
         }
 
         // --- life_change ---
-        m = P_LIFE.matcher(msg);
+        m = P_LIFE.matcher(clean);
         if (m.matches()) {
             int amount = Integer.parseInt(m.group(3));
             int delta = "loses".equals(m.group(2)) ? -amount : amount;

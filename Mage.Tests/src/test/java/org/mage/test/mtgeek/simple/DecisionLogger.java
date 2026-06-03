@@ -12,12 +12,18 @@ public final class DecisionLogger {
     public static void log(mage.game.Game game,
                            String hook, String pickedDesc, double pickedScore,
                            String runnerUpDesc, double runnerUpScore, int candCount) {
-        String line = String.format(
-            "[Simple|%s] picked: %s (score=%.2f); runner-up: %s (score=%.2f); n=%d",
-            hook, pickedDesc, pickedScore,
-            (runnerUpDesc == null ? "n/a" : runnerUpDesc),
-            runnerUpScore, candCount
-        );
+        String line;
+        if (runnerUpDesc == null) {
+            line = String.format(
+                "[Simple|%s] picked: %s (score=%.2f); n=%d",
+                hook, pickedDesc, pickedScore, candCount
+            );
+        } else {
+            line = String.format(
+                "[Simple|%s] picked: %s (score=%.2f); runner-up: %s (score=%.2f); n=%d",
+                hook, pickedDesc, pickedScore, runnerUpDesc, runnerUpScore, candCount
+            );
+        }
         game.informPlayers(line);
     }
 

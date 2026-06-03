@@ -117,4 +117,30 @@ public class MatchRecorderTest {
         rec.onGameLog(null, "");
         assertEquals(0, rec.getEvents().size());
     }
+
+    @Test
+    public void parseLogLine_htmlDecoratedPlayerPlaysLand_stripsAndParses() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='red'>PlayerA</font> plays <font object_id='abc'>Mountain</font> [abc]");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        assertEquals("play_land", events.get(0).type);
+        assertEquals("A", events.get(0).actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) events.get(0).payload.get("card");
+        assertEquals("Mountain", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_turnLine_updatesCurrentTurn() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "Turn 5");
+        rec.onGameLog(null, "<font>PlayerA</font> plays <font>Mountain</font>");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        // The play_land event should have turn=5
+        ReplayEvent playLand = events.stream()
+            .filter(e -> "play_land".equals(e.type))
+            .findFirst().orElseThrow();
+        assertEquals(5, playLand.turn);
+    }
 }
