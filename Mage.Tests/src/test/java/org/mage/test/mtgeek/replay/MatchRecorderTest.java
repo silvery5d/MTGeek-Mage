@@ -294,4 +294,26 @@ public class MatchRecorderTest {
         assertEquals("A", e.actor);
         assertEquals(1, ((Number) e.payload.get("n")).intValue());
     }
+
+    // --- turn tracking via game.getTurnNum() (Task 7) ---
+
+    @Test
+    public void onGameLog_nullGame_turnStaysAtDefault() {
+        MatchRecorder rec = new MatchRecorder();
+        // null game → currentTurn stays at 0 (default)
+        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Pass (score=-1.50); n=1");
+        assertEquals(1, rec.getEvents().size());
+        assertEquals(0, rec.getEvents().get(0).turn);
+    }
+
+    @Test
+    public void onGameLog_nullGame_setTurnThenLog_turnPreserved() {
+        MatchRecorder rec = new MatchRecorder();
+        // Simulate external turn injection (e.g., via setTurn) followed by null-game log
+        rec.setTurn(5);
+        rec.onGameLog(null, "PlayerA puts Mountain from hand onto the Battlefield");
+        assertEquals(1, rec.getEvents().size());
+        // null game must NOT overwrite the turn we set externally
+        assertEquals(5, rec.getEvents().get(0).turn);
+    }
 }

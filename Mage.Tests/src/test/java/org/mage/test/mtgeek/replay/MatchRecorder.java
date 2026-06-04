@@ -77,6 +77,10 @@ public class MatchRecorder extends EmptyDataCollector {
     @Override
     public void onGameLog(Game game, String message) {
         if (message == null || message.isEmpty()) return;
+        // Track current turn from live Game state (XMage doesn't emit "Turn N" log lines in headless mode)
+        if (game != null) {
+            currentTurn = game.getTurnNum();
+        }
         // 诊断模式：rawLogPath 设置时把原始 log 行追加到文件
         if (rawLogPath != null) {
             try {
