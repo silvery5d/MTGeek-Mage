@@ -14,9 +14,9 @@ import java.util.regex.Pattern;
  */
 public class MatchRecorder extends EmptyDataCollector {
 
-    // [Simple|priority] picked: Cast "Lightning Bolt" (score=15.50); runner-up: Pass (score=-1.50); n=4
+    // [Simple|PlayerA:priority] picked: Cast "Lightning Bolt" (score=15.50); runner-up: Pass (score=-1.50); n=4
     private static final Pattern P_DECISION = Pattern.compile(
-            "^\\[Simple\\|([^\\]]+)\\] picked: (.+?) \\(score=([-\\d.]+)\\)" +
+            "^\\[Simple\\|([^:]+):([^\\]]+)\\] picked: (.+?) \\(score=([-\\d.]+)\\)" +
             "(?:; runner-up: (.+?) \\(score=([-\\d.]+)\\))?; n=(\\d+)$"
     );
 
@@ -106,14 +106,16 @@ public class MatchRecorder extends EmptyDataCollector {
             m = P_DECISION.matcher(msg);
             if (!m.matches()) return null;
             ReplayEvent ev = new ReplayEvent(0, 0, "decision");
-            ev.payload.put("hook", m.group(1));
-            ev.payload.put("picked", m.group(2));
-            ev.payload.put("pickedScore", Double.parseDouble(m.group(3)));
-            if (m.group(4) != null) {
-                ev.payload.put("runnerUp", m.group(4));
-                ev.payload.put("runnerUpScore", Double.parseDouble(m.group(5)));
+            String playerName = m.group(1);  // NEW: extract player name
+            ev.actor = playerName.contains("PlayerA") ? "A" : (playerName.contains("PlayerB") ? "B" : null);
+            ev.payload.put("hook", m.group(2));      // was group(1) before
+            ev.payload.put("picked", m.group(3));    // was group(2)
+            ev.payload.put("pickedScore", Double.parseDouble(m.group(4)));  // was group(3)
+            if (m.group(5) != null) {                // was group(4)
+                ev.payload.put("runnerUp", m.group(5));
+                ev.payload.put("runnerUpScore", Double.parseDouble(m.group(6)));  // was group(5)
             }
-            ev.payload.put("candidates", Integer.parseInt(m.group(6)));
+            ev.payload.put("candidates", Integer.parseInt(m.group(7)));  // was group(6)
             return ev;
         }
 

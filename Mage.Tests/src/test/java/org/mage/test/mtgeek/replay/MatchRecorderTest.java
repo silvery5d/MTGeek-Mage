@@ -12,16 +12,42 @@ public class MatchRecorderTest {
     @Test
     public void parseLogLine_simpleDecision_emitsDecisionEvent() {
         MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "[Simple|priority] picked: Cast \"Lightning Bolt\" (score=15.50); runner-up: Pass (score=-1.50); n=4");
+        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Cast \"Lightning Bolt\" (score=15.50); runner-up: Pass (score=-1.50); n=4");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(1, events.size());
         ReplayEvent e = events.get(0);
         assertEquals("decision", e.type);
+        assertEquals("A", e.actor);
         assertEquals("priority", e.payload.get("hook"));
         assertEquals("Cast \"Lightning Bolt\"", e.payload.get("picked"));
         assertEquals(15.5, ((Number) e.payload.get("pickedScore")).doubleValue(), 1e-6);
         assertEquals("Pass", e.payload.get("runnerUp"));
         assertEquals(4, ((Number) e.payload.get("candidates")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_decisionPlayerA_setsActorA() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Cast \"Lightning Bolt\" (score=15.50); runner-up: Pass (score=-1.50); n=4");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("decision", e.type);
+        assertEquals("A", e.actor);
+        assertEquals("priority", e.payload.get("hook"));
+        assertEquals("Cast \"Lightning Bolt\"", e.payload.get("picked"));
+        assertEquals(15.5, ((Number) e.payload.get("pickedScore")).doubleValue(), 1e-6);
+        assertEquals("Pass", e.payload.get("runnerUp"));
+        assertEquals(4, ((Number) e.payload.get("candidates")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_decisionPlayerB_setsActorB() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[Simple|PlayerB:selectAttackers] picked: 2 attackers declared (of 2 eligible) (score=20.00); n=1");
+        assertEquals(1, rec.getEvents().size());
+        assertEquals("B", rec.getEvents().get(0).actor);
+        assertEquals("selectAttackers", rec.getEvents().get(0).payload.get("hook"));
     }
 
     @Test
