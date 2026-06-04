@@ -295,6 +295,98 @@ public class MatchRecorderTest {
         assertEquals(1, ((Number) e.payload.get("n")).intValue());
     }
 
+    // --- NICE events: attack (Task 8) ---
+
+    @Test
+    public void parseLogLine_attack_singleCreature_emitsAttackEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage format (HTML-decorated, from research sample line 89)
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerB</font> attacks <font color='#20B2AA'>PlayerA</font> with 1 creature");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("attack", e.type);
+        assertEquals("B", e.actor);
+        assertEquals("PlayerA", e.payload.get("target"));
+        assertEquals(1, ((Number) e.payload.get("count")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_attack_multiCreature_emitsAttackEventWithCount() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage format (HTML-decorated, from research sample line 194)
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerB</font> attacks <font color='#20B2AA'>PlayerA</font> with 2 creatures");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("attack", e.type);
+        assertEquals("B", e.actor);
+        assertEquals("PlayerA", e.payload.get("target"));
+        assertEquals(2, ((Number) e.payload.get("count")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_attack_playerA_emitsAttackWithActorA() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA attacks PlayerB with 1 creature");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("attack", e.type);
+        assertEquals("A", e.actor);
+        assertEquals("PlayerB", e.payload.get("target"));
+    }
+
+    // --- NICE events: game_end (Task 8) ---
+
+    @Test
+    public void parseLogLine_gameEnd_loser_emitsGameEndWithWinnerInferred() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage format line 199: "PlayerA has lost the game." (note trailing period)
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerA</font> has lost the game.");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("game_end", e.type);
+        // PlayerA lost → winner is B
+        assertEquals("B", e.payload.get("winner"));
+    }
+
+    @Test
+    public void parseLogLine_gameEnd_winner_emitsGameEndWithWinner() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage format line 200: "PlayerB has won the game" (no trailing period)
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerB</font> has won the game");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("game_end", e.type);
+        assertEquals("B", e.payload.get("winner"));
+    }
+
+    @Test
+    public void parseLogLine_gameEnd_playerA_winner_emitsGameEndWinnerA() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA has won the game");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("game_end", e.type);
+        assertEquals("A", e.payload.get("winner"));
+    }
+
+    @Test
+    public void parseLogLine_gameEnd_playerB_loser_emitsGameEndWinnerA() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB has lost the game.");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("game_end", e.type);
+        // PlayerB lost → winner is A
+        assertEquals("A", e.payload.get("winner"));
+    }
+
     // --- turn tracking via game.getTurnNum() (Task 7) ---
 
     @Test

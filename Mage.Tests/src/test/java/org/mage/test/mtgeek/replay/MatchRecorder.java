@@ -47,10 +47,26 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) puts (a card|(\\d+) cards?) from library into their hand$"
     );
 
+    // PlayerB attacks PlayerA with 1 creature / PlayerB attacks PlayerA with 2 creatures
+    // Real XMage format confirmed from research sample lines 89, 113, 148, 167, 194
+    private static final Pattern P_ATTACK = Pattern.compile(
+            "^(PlayerA|PlayerB) attacks (PlayerA|PlayerB) with (\\d+) creatures?$"
+    );
+
+    // PlayerA has lost the game.   (trailing period)
+    // PlayerB has won the game     (no trailing period)
+    // Real XMage format confirmed from research sample lines 199, 200
+    private static final Pattern P_GAME_END = Pattern.compile(
+            "^(PlayerA|PlayerB) has (lost|won) the game\\.?$"
+    );
+
     // Turn 5 (or "Turn 5: PlayerA")
     private static final Pattern P_TURN = Pattern.compile(
             "^Turn (\\d+).*"
     );
+
+    // NOTE: block — no samples in research (all attacks were unblocked); skip per task spec.
+    // NOTE: damage — folded into life_change ("loses N life at combat from <card>"); no separate type needed.
 
     private final List<ReplayEvent> events = new ArrayList<>();
     private int counter = 0;
@@ -187,6 +203,37 @@ public class MatchRecorder extends EmptyDataCollector {
             ReplayEvent ev = new ReplayEvent(0, 0, "life_change");
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("delta", delta);
+            return ev;
+        }
+
+        // --- attack ---
+        // "PlayerB attacks PlayerA with 1 creature"  /  "with 2 creatures"
+        m = P_ATTACK.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "attack");
+            ev.actor = resolveActor(m.group(1));
+            ev.payload.put("target", m.group(2));
+            ev.payload.put("count", Integer.parseInt(m.group(3)));
+            return ev;
+        }
+
+        // --- game_end ---
+        // "PlayerA has lost the game."  →  winner is the other player
+        // "PlayerB has won the game"    →  winner is that player
+        m = P_GAME_END.matcher(clean);
+        if (m.matches()) {
+            String player = m.group(1);
+            String verb   = m.group(2);  // "lost" or "won"
+            ReplayEvent ev = new ReplayEvent(0, 0, "game_end");
+            String winner;
+            if ("won".equals(verb)) {
+                winner = resolveActor(player);
+            } else {
+                // player lost → the other player won
+                winner = "PlayerA".equals(player) ? "B" : "A";
+            }
+            ev.payload.put("winner", winner);
+            ev.payload.put("reason", clean);
             return ev;
         }
 
