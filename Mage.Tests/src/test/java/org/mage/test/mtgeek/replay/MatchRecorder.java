@@ -20,9 +20,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "(?:; runner-up: (.+?) \\(score=([-\\d.]+)\\))?; n=(\\d+)$"
     );
 
-    // PlayerA plays Mountain
+    // PlayerA puts Ancient Tomb from hand onto the Battlefield  (real XMage format, HTML-stripped)
+    // NOTE: "puts ... from hand onto the Battlefield" fires for any permanent entering from hand
+    // (lands, creatures, artifacts, etc). We still emit event type "play_land" per spec —
+    // differentiating card type would require a card-type lookup we don't have in B3.1.
     private static final Pattern P_PLAYS_LAND = Pattern.compile(
-            "^(PlayerA|PlayerB) plays (.+)$"
+            "^(PlayerA|PlayerB) puts (.+?) from hand onto the Battlefield$"
     );
 
     // PlayerA casts Lightning Bolt  /  PlayerB casts Serra Angel targeting PlayerA

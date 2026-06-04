@@ -53,7 +53,8 @@ public class MatchRecorderTest {
     @Test
     public void parseLogLine_playerPlaysLand_emitsPlayLandEvent() {
         MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "PlayerA plays Mountain");
+        // Real XMage format (plain, no HTML)
+        rec.onGameLog(null, "PlayerA puts Mountain from hand onto the Battlefield");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(1, events.size());
         ReplayEvent e = events.get(0);
@@ -112,7 +113,7 @@ public class MatchRecorderTest {
     @Test
     public void multipleEvents_indexesIncrementCorrectly() {
         MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "PlayerA plays Mountain");
+        rec.onGameLog(null, "PlayerA puts Mountain from hand onto the Battlefield");
         rec.onGameLog(null, "PlayerB casts Lightning Bolt");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(2, events.size());
@@ -124,7 +125,7 @@ public class MatchRecorderTest {
     public void setTurn_eventsCarryTurnNumber() {
         MatchRecorder rec = new MatchRecorder();
         rec.setTurn(3);
-        rec.onGameLog(null, "PlayerA plays Mountain");
+        rec.onGameLog(null, "PlayerA puts Mountain from hand onto the Battlefield");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(1, events.size());
         assertEquals(3, events.get(0).turn);
@@ -147,7 +148,8 @@ public class MatchRecorderTest {
     @Test
     public void parseLogLine_htmlDecoratedPlayerPlaysLand_stripsAndParses() {
         MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "<font color='red'>PlayerA</font> plays <font object_id='abc'>Mountain</font> [abc]");
+        // Real XMage format: HTML-decorated "puts X from hand onto the Battlefield"
+        rec.onGameLog(null, "<font color='red'>PlayerA</font> puts <font object_id='abc'>Mountain</font> [abc] from hand onto the Battlefield");
         java.util.List<ReplayEvent> events = rec.getEvents();
         assertEquals(1, events.size());
         assertEquals("play_land", events.get(0).type);
@@ -161,12 +163,35 @@ public class MatchRecorderTest {
     public void parseLogLine_turnLine_updatesCurrentTurn() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "Turn 5");
-        rec.onGameLog(null, "<font>PlayerA</font> plays <font>Mountain</font>");
+        rec.onGameLog(null, "<font>PlayerA</font> puts <font>Mountain</font> from hand onto the Battlefield");
         java.util.List<ReplayEvent> events = rec.getEvents();
         // The play_land event should have turn=5
         ReplayEvent playLand = events.stream()
             .filter(e -> "play_land".equals(e.type))
             .findFirst().orElseThrow();
         assertEquals(5, playLand.turn);
+    }
+
+    @Test
+    public void parseLogLine_playLand_html_emitsPlayLandEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        // 真实 XMage 格式（含 HTML 装饰）
+        rec.onGameLog(null, "<font color='red'>PlayerA</font> puts <font color='black' object_id='abc'>Ancient Tomb</font> [abc] from hand onto the Battlefield");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("play_land", e.type);
+        assertEquals("A", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Ancient Tomb", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_playLand_playerB() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerB</font> puts <font>Polluted Delta</font> from hand onto the Battlefield");
+        assertEquals(1, rec.getEvents().size());
+        assertEquals("B", rec.getEvents().get(0).actor);
     }
 }
