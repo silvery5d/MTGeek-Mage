@@ -72,6 +72,7 @@ public class MatchRecorder extends EmptyDataCollector {
     private final List<ReplayEvent> events = new ArrayList<>();
     private int counter = 0;
     private int currentTurn = 0;
+    private boolean gameEndedEmitted = false;
 
     // 诊断模式：rawLogPath 非 null 时，把每一条原始 log 行追加到文件（零开销 when null）
     private java.nio.file.Path rawLogPath;
@@ -89,6 +90,7 @@ public class MatchRecorder extends EmptyDataCollector {
         events.clear();
         counter = 0;
         currentTurn = 0;
+        gameEndedEmitted = false;
     }
 
     @Override
@@ -221,8 +223,11 @@ public class MatchRecorder extends EmptyDataCollector {
         // --- game_end ---
         // "PlayerA has lost the game."  →  winner is the other player
         // "PlayerB has won the game"    →  winner is that player
+        // XMage emits both lines; guard ensures only the first fires.
         m = P_GAME_END.matcher(clean);
         if (m.matches()) {
+            if (gameEndedEmitted) return null;  // 守卫：第二条 game_end 行静默丢弃
+            gameEndedEmitted = true;
             String player = m.group(1);
             String verb   = m.group(2);  // "lost" or "won"
             ReplayEvent ev = new ReplayEvent(0, 0, "game_end");

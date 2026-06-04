@@ -402,6 +402,30 @@ public class MatchRecorderTest {
         assertEquals("A", e.payload.get("winner"));
     }
 
+    // --- game_end dedup (B3.2 Task 1) ---
+
+    @Test
+    public void gameEnd_emitsOnlyOnce_evenWithBothLossAndWinLines() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerB</font> has lost the game");
+        rec.onGameLog(null, "<font>PlayerA</font> has won the game");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        long gameEnds = events.stream().filter(e -> "game_end".equals(e.type)).count();
+        assertEquals("game_end should fire exactly once", 1L, gameEnds);
+        // 第一行 lost → winner="A"
+        ReplayEvent e = events.stream().filter(ev -> "game_end".equals(ev.type)).findFirst().orElseThrow();
+        assertEquals("A", e.payload.get("winner"));
+    }
+
+    @Test
+    public void gameEnd_winOnly_emitsOnce() {
+        MatchRecorder rec = new MatchRecorder();
+        // 只有 "won" 行（无 "lost" 先到）
+        rec.onGameLog(null, "<font>PlayerA</font> has won the game");
+        long gameEnds = rec.getEvents().stream().filter(e -> "game_end".equals(e.type)).count();
+        assertEquals(1L, gameEnds);
+    }
+
     // --- turn tracking via game.getTurnNum() (Task 7) ---
 
     @Test
