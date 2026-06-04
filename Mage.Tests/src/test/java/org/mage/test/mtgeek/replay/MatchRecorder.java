@@ -61,7 +61,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) has (lost|won) the game\\.?$"
     );
 
-    // Turn 5 (or "Turn 5: PlayerA")
+    /**
+     * Fallback 正则——XMage headless 测试模式不会 emit "Turn N" 行（B3.1 研究确认；见
+     * docs/research/xmage-log-formats.md）。Production 用 onGameLog 内的
+     * game.getTurnNum() 直接拉。本 pattern 保留以备 upstream 改变行为不破。
+     * 命中时更新 currentTurn 但不 emit 事件。
+     */
     private static final Pattern P_TURN = Pattern.compile(
             "^Turn (\\d+).*"
     );
