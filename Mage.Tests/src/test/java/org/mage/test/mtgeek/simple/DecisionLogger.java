@@ -27,4 +27,17 @@ public final class DecisionLogger {
             "[Simple|%s:%s] picked: %s (score=%.2f); n=1",
             playerName, hook, pickedDesc, pickedScore));
     }
+
+    /** LLM 决策：picked + rationale（中英文均支持）。 */
+    public static void logLLM(String hook, String playerName, String picked, String rationale) {
+        String safe = rationale.replace('\n', ' ').replace('\r', ' ');
+        System.out.println(String.format("[LLM|%s:%s] picked: %s; rationale: %s",
+            playerName, hook, picked, safe));
+    }
+
+    /** LLM fallback：在连续失败后记录失败原因。 */
+    public static void logLLMFallback(String hook, String playerName, String reason) {
+        String safe = reason.replace('\n', ' ').replace('\r', ' ');
+        System.out.println(String.format("[LLM-FALLBACK|%s:%s] reason: %s", playerName, hook, safe));
+    }
 }

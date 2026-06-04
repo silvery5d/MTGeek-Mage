@@ -486,4 +486,31 @@ public class MatchRecorderTest {
         assertEquals("A", e.actor);
         assertEquals(4, ((Number) e.payload.get("delta")).intValue());
     }
+
+    // --- B2' Task 7: LLM decision logging ---
+
+    @Test
+    public void parseLogLine_llmDecision_emitsDecisionWithRationale() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[LLM|PlayerA:priority] picked: Cast Lightning Bolt; rationale: 打对手 Tarmogoyf 解牌");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("decision", e.type);
+        assertEquals("A", e.actor);
+        assertEquals("priority", e.payload.get("hook"));
+        assertEquals("Cast Lightning Bolt", e.payload.get("picked"));
+        assertEquals("打对手 Tarmogoyf 解牌", e.payload.get("rationale"));
+        assertEquals("LLM", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_simpleDecisionStillWorks_noRationale() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Pass (score=-1.50); n=1");
+        assertEquals(1, rec.getEvents().size());
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("decision", e.type);
+        assertNull("Simple decision should have no rationale", e.payload.get("rationale"));
+    }
 }

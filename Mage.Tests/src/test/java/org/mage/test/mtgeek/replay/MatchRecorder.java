@@ -14,6 +14,11 @@ import java.util.regex.Pattern;
  */
 public class MatchRecorder extends EmptyDataCollector {
 
+    // [LLM|PlayerA:priority] picked: Cast Lightning Bolt; rationale: 打对手 Tarmogoyf 解牌
+    private static final Pattern P_LLM_DECISION = Pattern.compile(
+            "^\\[LLM\\|([^:]+):([^\\]]+)\\] picked: (.+?); rationale: (.+)$"
+    );
+
     // [Simple|PlayerA:priority] picked: Cast "Lightning Bolt" (score=15.50); runner-up: Pass (score=-1.50); n=4
     private static final Pattern P_DECISION = Pattern.compile(
             "^\\[Simple\\|([^:]+):([^\\]]+)\\] picked: (.+?) \\(score=([-\\d.]+)\\)" +
@@ -140,6 +145,20 @@ public class MatchRecorder extends EmptyDataCollector {
 
     private ReplayEvent parseLogLine(String msg) {
         Matcher m;
+
+        // --- LLM decision (B2' DecisionLogger.logLLM format) ---
+        if (msg.startsWith("[LLM|")) {
+            Matcher mLLM = P_LLM_DECISION.matcher(msg);
+            if (!mLLM.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "decision");
+            String playerName = mLLM.group(1);
+            ev.actor = resolveActor(playerName);
+            ev.payload.put("hook", mLLM.group(2));
+            ev.payload.put("picked", mLLM.group(3));
+            ev.payload.put("rationale", mLLM.group(4));
+            ev.payload.put("source", "LLM");
+            return ev;
+        }
 
         // --- decision (B1' SimpleAI DecisionLogger format) ---
         if (msg.startsWith("[Simple|")) {
