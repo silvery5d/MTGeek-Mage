@@ -101,7 +101,8 @@ git rebase master   # 或 merge，看冲突情况
 - ✅ **B1'（已完成）**：SimpleAI —— 值函数驱动可解释 AI（完赛率 ✅；胜率调参留 B1.1）
 - ✅ **B1.1（已完成）**：调参与逻辑补全 —— Show-and-Tell 37.5%→50%，综合 53.3%→63.3%
 - B2'：LLM-Agent（Java AI 经 HTTP 调外部 Python/JS 服务用 MiniMax 决策）
-- B3'：Web 观战页（MTGeek Next.js 接到 fork 的 HTTP 服务）
+- ✅ **B3'（已完成）**：Web 观战基础 —— MatchRecorder + ReplayWriter 写 JSON 到 MTGeek 前端
+- ✅ **B3.1（已完成）**：录制完整度 —— 7 类事件 + actor 追踪 + turn 追踪
 
 ### B1' （已完成）：SimpleAI 值函数驱动可解释 AI
 
@@ -164,3 +165,36 @@ ls Mage.Tests/target/tournament-results-*.csv
 **关键调试发现**：首轮 Tournament 出现明显回归（Show-and-Tell 跌到 12.5%），诊断发现根因不是数值调参错而是 `chooseUse`/`chooseTarget` 对 Show-and-Tell 类卡的路径未覆盖——SimpleAI 在被问到"要把手牌放上场吗？"时返 NO，等于主动拒绝整个 combo。修复后回归消除并显著超越 B1' 基线。这次发现验证了 spec §7.4"迭代预案"的价值——单跑 Tournament 是发现这类 sequencing bug 的关键手段。
 
 MTGeek 主仓：`~/Documents/claude/MTGeek/`（Next.js 智能问答前端，与本仓解耦）
+
+### B3'（已完成）：Web 观战基础 — MatchRecorder + ReplayWriter
+
+`MTGeekReplayMatchTest` 跑一场 SimpleAI vs SimpleAI 对局，录制结构化 replay JSON 写到 MTGeek 前端：
+
+- `MatchRecorder`：XMage `DataCollector` 实现，监听 `onGameLog` 把原始 log 行解析成 `ReplayEvent`
+- `ReplayWriter`：把 `MatchRecorder` 采集到的事件序列化成 JSON 文件，写到 `~/Documents/claude/MTGeek/public/replays/`
+- `ReplayEvent`：POJO（`type`, `turn`, `actor`, `detail`, `seq`）+ 手写 `toJson()`（零额外依赖）
+
+B3' 初版只解析 2 类事件（decision + cast_spell）且存在 turn 追踪、actor 填充等问题，由 B3.1 修复。
+
+### B3.1（已完成）：录制完整度
+
+修了 B3' MatchRecorder 只解析 2 类事件的限制：
+
+- `DecisionLogger` 加 `playerName` → 新 log 行 `[Simple|PlayerA:priority] picked: ...`
+- `MatchRecorder` 加 7 类事件正则：`play_land` / `life_change` / `draw` / `decision` / `attack` / `game_end` + decision actor 提取
+- HTML strip 处理 XMage `<font>` 装饰 + `[hex]` suffix
+- Turn 追踪用 `game.getTurnNum()`（XMage 不 emit `Turn N` 行）
+- MTGeek 侧 `decision.actor` 类型收紧为必填，`EventLog`/`DecisionDetail` 显示决策归属
+
+实测对比：事件类型从 B3' 的 2 类（decision+cast_spell）扩到 **7 类**；distinct turns 从 1 增至 17-40+；decision actor 填充率 0% → **100%**；Battlefield UI 真正反映对局进展（life 下降、battlefield 长卡）。
+
+跑录制测试：
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export MAVEN_OPTS="-Xmx4g"
+mvn test -pl Mage.Tests -Dtest=MTGeekReplayMatchTest -DfailIfNoTests=false -Djava.awt.headless=true
+```
+
+JSON 写到 `~/Documents/claude/MTGeek/public/replays/match-<timestamp>.json`，前端 `/replay` 页面可直接读取。
+
+研究笔记：`docs/research/xmage-log-formats.md`
