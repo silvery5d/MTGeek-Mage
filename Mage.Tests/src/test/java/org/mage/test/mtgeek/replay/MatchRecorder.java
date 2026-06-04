@@ -33,9 +33,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) casts (.+?)(?:\\s+targeting .+)?$"
     );
 
-    // PlayerA loses 3 life  /  PlayerB gains 5 life
+    // PlayerA loses 3 life
+    // PlayerA loses 1 life from Polluted Delta
+    // PlayerA loses 2 life at combat from Nethergoyf
+    // PlayerB gains 5 life
     private static final Pattern P_LIFE = Pattern.compile(
-            "^(PlayerA|PlayerB) (loses|gains) (\\d+) life$"
+            "^(PlayerA|PlayerB) (loses|gains) (\\d+) life(?:\\s+(?:at combat\\s+)?from .+)?$"
     );
 
     // Turn 5 (or "Turn 5: PlayerA")

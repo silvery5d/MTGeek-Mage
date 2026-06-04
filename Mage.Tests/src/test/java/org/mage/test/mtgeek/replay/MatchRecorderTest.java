@@ -194,4 +194,54 @@ public class MatchRecorderTest {
         assertEquals(1, rec.getEvents().size());
         assertEquals("B", rec.getEvents().get(0).actor);
     }
+
+    // --- life_change: HTML-decorated variants (Task 5) ---
+
+    @Test
+    public void parseLogLine_lifeLossWithSource_emitsLifeChangeNegative() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerA</font> loses 1 life from <font color='#B0C4DE' object_id='a5e6d55c-590e-43f3-b1f4-101c1b6fe98c'>Polluted Delta</font> [a5e]");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(-1, ((Number) e.payload.get("delta")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_lifeLossAtCombat_emitsLifeChangeNegative() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerA</font> loses 2 life at combat from <font color='#696969' object_id='08b6fcfe-ac5a-484a-83f4-2fd7f6f6eb99'>Nethergoyf</font> [08b]");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(-2, ((Number) e.payload.get("delta")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_lifeLossPlayerB_emitsLifeChangeNegative() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerB</font> loses 2 life from <font color='#696969' object_id='c9cfee50-1264-4ee9-aea4-facda026255a'>Thoughtseize</font> [c9c]");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals("B", e.actor);
+        assertEquals(-2, ((Number) e.payload.get("delta")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_lifeGainWithoutSource_emitsLifeChangePositive() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerB</font> gains 3 life");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals("B", e.actor);
+        assertEquals(3, ((Number) e.payload.get("delta")).intValue());
+    }
 }
