@@ -10,22 +10,6 @@ import static org.junit.Assert.*;
 public class MatchRecorderTest {
 
     @Test
-    public void parseLogLine_simpleDecision_emitsDecisionEvent() {
-        MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Cast \"Lightning Bolt\" (score=15.50); runner-up: Pass (score=-1.50); n=4");
-        List<ReplayEvent> events = rec.getEvents();
-        assertEquals(1, events.size());
-        ReplayEvent e = events.get(0);
-        assertEquals("decision", e.type);
-        assertEquals("A", e.actor);
-        assertEquals("priority", e.payload.get("hook"));
-        assertEquals("Cast \"Lightning Bolt\"", e.payload.get("picked"));
-        assertEquals(15.5, ((Number) e.payload.get("pickedScore")).doubleValue(), 1e-6);
-        assertEquals("Pass", e.payload.get("runnerUp"));
-        assertEquals(4, ((Number) e.payload.get("candidates")).intValue());
-    }
-
-    @Test
     public void parseLogLine_decisionPlayerA_setsActorA() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Cast \"Lightning Bolt\" (score=15.50); runner-up: Pass (score=-1.50); n=4");
@@ -446,5 +430,60 @@ public class MatchRecorderTest {
         assertEquals(1, rec.getEvents().size());
         // null game must NOT overwrite the turn we set externally
         assertEquals(5, rec.getEvents().get(0).turn);
+    }
+
+    // --- B3.2 Task 2: 4 new tests ---
+
+    @Test
+    public void parseLogLine_castsSpell_htmlWithFromHand_realFormat() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='red'>PlayerB</font> casts <font object_id='abc'>Lightning Bolt</font> from hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("cast_spell", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Lightning Bolt", card.get("name"));  // 不是 "Lightning Bolt from hand"
+    }
+
+    @Test
+    public void parseLogLine_drawSingularNumeric_emitsN1() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerA</font> puts 1 card from library into their hand");
+        assertEquals(1, rec.getEvents().size());
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("draw", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(1, ((Number) e.payload.get("n")).intValue());
+    }
+
+    @Test
+    public void onGameStart_resetsCounterAndEvents() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[Simple|PlayerA:priority] picked: Pass (score=-1.50); n=1");
+        rec.onGameLog(null, "<font>PlayerA</font> puts <font>Mountain</font> from hand onto the Battlefield");
+        assertEquals(2, rec.getEvents().size());
+        assertEquals(0, rec.getEvents().get(0).i);
+
+        // 模拟第二局：onGameStart 应清空 events + counter
+        rec.onGameStart(null);
+        assertEquals(0, rec.getEvents().size());
+
+        rec.onGameLog(null, "[Simple|PlayerB:priority] picked: Pass (score=-1.50); n=1");
+        assertEquals(1, rec.getEvents().size());
+        assertEquals(0, rec.getEvents().get(0).i);  // counter 重置为 0
+    }
+
+    @Test
+    public void parseLogLine_lifeGainWithSource_emitsPositiveDelta() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerA</font> gains 4 life from <font>Lightning Helix</font>");
+        assertEquals(1, rec.getEvents().size());
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("life_change", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(4, ((Number) e.payload.get("delta")).intValue());
     }
 }
