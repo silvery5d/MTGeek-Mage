@@ -146,7 +146,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         }
 
         // 6) Log + execute
-        DecisionLogger.log(game, "priority", best.desc, best.score,
+        DecisionLogger.log(game, getName(), "priority", best.desc, best.score,
                 runnerUp == null ? null : runnerUp.desc,
                 runnerUp == null ? 0.0 : runnerUp.score,
                 cands.size());
@@ -193,7 +193,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         }
         if (totalPower < opp.getLife()) return false;
 
-        DecisionLogger.logOnly(game, "priority",
+        DecisionLogger.logOnly(game, getName(), "priority",
                 "Lethal detected (total power " + totalPower + " >= life " + opp.getLife() + ")",
                 Weights.LETHAL_BONUS);
         return true;
@@ -281,7 +281,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             }
         }
         if (picked > 0) {
-            DecisionLogger.logOnly(game, "selectAttackers",
+            DecisionLogger.logOnly(game, getName(), "selectAttackers",
                     picked + " attacker(s) declared (of " + cands.size() + " eligible)",
                     sumScore);
         }
@@ -329,7 +329,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             }
             if (bestBlocker != null) {
                 this.declareBlocker(getId(), bestBlocker.getId(), attackerId, game);
-                DecisionLogger.logOnly(game, "selectBlockers",
+                DecisionLogger.logOnly(game, getName(), "selectBlockers",
                         bestBlocker.getName() + " blocks " + attacker.getName(), bestScore);
             }
         }
@@ -368,7 +368,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             picked++;
         }
         if (!sorted.isEmpty()) {
-            DecisionLogger.logOnly(game, "chooseFromHand",
+            DecisionLogger.logOnly(game, getName(), "chooseFromHand",
                     (pickMax ? "PUT max" : "DROP min") + " " + picked + "/" + cards.size()
                             + " \"" + sorted.get(0).getName() + "\"",
                     ValueFunction.scoreHandCardAsThreat(sorted.get(0), game));
@@ -439,7 +439,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             if (best != null) {
                 target.addTarget(best, source, game);
                 Card bc = game.getCard(best);
-                DecisionLogger.logOnly(game, "chooseTarget",
+                DecisionLogger.logOnly(game, getName(), "chooseTarget",
                         (pickMax ? "handMax" : "handMin") + " \""
                                 + (bc != null ? bc.getName() : best.toString().substring(0, 8))
                                 + "\", possible=" + possible.size(),
@@ -459,7 +459,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
 
         if (best != null) {
             target.addTarget(best, source, game);
-            DecisionLogger.logOnly(game, "chooseTarget",
+            DecisionLogger.logOnly(game, getName(), "chooseTarget",
                     "target=" + best.toString().substring(0, 8) + "..., possible=" + possible.size(),
                     bestScore);
             return true;
@@ -487,7 +487,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
                 best = m;
             }
         }
-        DecisionLogger.logOnly(game, "chooseMode",
+        DecisionLogger.logOnly(game, getName(), "chooseMode",
                 "mode score=" + String.format("%.2f", bestScore) + " (of " + available.size() + ")",
                 bestScore);
         return best;
@@ -499,7 +499,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         UUID sourceId = source == null ? null : source.getSourceId();
         double s = ValueFunction.scoreYesNo(game, sourceId, message);
         boolean yes = s > 0;
-        DecisionLogger.logOnly(game, "chooseUse",
+        DecisionLogger.logOnly(game, getName(), "chooseUse",
                 (yes ? "YES" : "NO") + " (\"" + message + "\")", s);
         return yes;
     }

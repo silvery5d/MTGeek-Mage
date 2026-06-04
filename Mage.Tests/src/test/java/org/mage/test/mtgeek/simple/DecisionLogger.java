@@ -9,27 +9,22 @@ public final class DecisionLogger {
     private DecisionLogger() {}
 
     /** 单一最佳行动 + runner-up 对照。candCount 是该钩子枚举到的候选总数。 */
-    public static void log(mage.game.Game game,
+    public static void log(mage.game.Game game, String playerName,
                            String hook, String pickedDesc, double pickedScore,
                            String runnerUpDesc, double runnerUpScore, int candCount) {
-        String line;
-        if (runnerUpDesc == null) {
-            line = String.format(
-                "[Simple|%s] picked: %s (score=%.2f); n=%d",
-                hook, pickedDesc, pickedScore, candCount
-            );
-        } else {
-            line = String.format(
-                "[Simple|%s] picked: %s (score=%.2f); runner-up: %s (score=%.2f); n=%d",
-                hook, pickedDesc, pickedScore, runnerUpDesc, runnerUpScore, candCount
-            );
-        }
+        String line = (runnerUpDesc == null)
+            ? String.format("[Simple|%s:%s] picked: %s (score=%.2f); n=%d",
+                playerName, hook, pickedDesc, pickedScore, candCount)
+            : String.format("[Simple|%s:%s] picked: %s (score=%.2f); runner-up: %s (score=%.2f); n=%d",
+                playerName, hook, pickedDesc, pickedScore, runnerUpDesc, runnerUpScore, candCount);
         game.informPlayers(line);
     }
 
     /** 单一决定无 runner-up（例如只有 1 候选）。 */
-    public static void logOnly(mage.game.Game game, String hook, String pickedDesc, double pickedScore) {
+    public static void logOnly(mage.game.Game game, String playerName,
+                               String hook, String pickedDesc, double pickedScore) {
         game.informPlayers(String.format(
-            "[Simple|%s] picked: %s (score=%.2f); n=1", hook, pickedDesc, pickedScore));
+            "[Simple|%s:%s] picked: %s (score=%.2f); n=1",
+            playerName, hook, pickedDesc, pickedScore));
     }
 }
