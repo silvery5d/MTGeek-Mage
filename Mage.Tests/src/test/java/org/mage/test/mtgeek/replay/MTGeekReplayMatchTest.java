@@ -89,6 +89,14 @@ public class MTGeekReplayMatchTest extends CardTestPlayerBaseAI {
     @Test
     public void recordSimpleVsSimple_andWriteJson() throws IOException {
         recorder = new MatchRecorder();
+
+        // 诊断模式：每次运行都把原始 log 行 dump 到 target/raw-log-diagnosis-<ts>.txt
+        String ts = Instant.now().toString().replaceAll("[:.]", "-");
+        java.nio.file.Path rawDump = java.nio.file.Path.of("target/raw-log-diagnosis-" + ts + ".txt");
+        java.nio.file.Files.createDirectories(rawDump.getParent());
+        recorder.setRawLogPath(rawDump);
+        System.out.println("[B3.1] Raw log dump: " + rawDump.toAbsolutePath());
+
         DataCollectorServices.register(recorder);
 
         setStopAt(50, PhaseStep.UNTAP);
@@ -97,7 +105,6 @@ public class MTGeekReplayMatchTest extends CardTestPlayerBaseAI {
 
         // --- build metadata ---
         ReplayWriter.Metadata meta = new ReplayWriter.Metadata();
-        String ts = Instant.now().toString().replaceAll("[:.]", "-");
         meta.matchId   = "match-" + ts;
         meta.timestamp = Instant.now().toString();
         meta.deckA     = "show-and-tell.dck";

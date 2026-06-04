@@ -44,6 +44,11 @@ public class MatchRecorder extends EmptyDataCollector {
     private int counter = 0;
     private int currentTurn = 0;
 
+    // 诊断模式：rawLogPath 非 null 时，把每一条原始 log 行追加到文件（零开销 when null）
+    private java.nio.file.Path rawLogPath;
+
+    public void setRawLogPath(java.nio.file.Path p) { this.rawLogPath = p; }
+
     @Override
     public String getServiceCode() {
         return "mtgeek-replay-recorder";
@@ -60,6 +65,14 @@ public class MatchRecorder extends EmptyDataCollector {
     @Override
     public void onGameLog(Game game, String message) {
         if (message == null || message.isEmpty()) return;
+        // 诊断模式：rawLogPath 设置时把原始 log 行追加到文件
+        if (rawLogPath != null) {
+            try {
+                java.nio.file.Files.writeString(rawLogPath, message + "\n",
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND);
+            } catch (java.io.IOException ignored) {}
+        }
         ReplayEvent ev = parseLogLine(message);
         if (ev != null) {
             ev.i = counter++;
