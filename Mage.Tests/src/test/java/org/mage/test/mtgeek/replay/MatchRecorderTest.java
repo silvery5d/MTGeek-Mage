@@ -244,4 +244,54 @@ public class MatchRecorderTest {
         assertEquals("B", e.actor);
         assertEquals(3, ((Number) e.payload.get("delta")).intValue());
     }
+
+    // --- draw events (Task 6) ---
+
+    @Test
+    public void parseLogLine_drawOneCard_emitsDrawWithN1() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerB</font> puts a card from library into their hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("draw", e.type);
+        assertEquals("B", e.actor);
+        assertEquals(1, ((Number) e.payload.get("n")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_drawOneCard_playerA_emitsDrawWithN1() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font color='#20B2AA'>PlayerA</font> puts a card from library into their hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("draw", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(1, ((Number) e.payload.get("n")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_drawMultipleCards_emitsDrawWithCorrectN() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts 3 cards from library into their hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("draw", e.type);
+        assertEquals("B", e.actor);
+        assertEquals(3, ((Number) e.payload.get("n")).intValue());
+    }
+
+    @Test
+    public void parseLogLine_drawPlain_noHtml_emitsDrawEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA puts a card from library into their hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("draw", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(1, ((Number) e.payload.get("n")).intValue());
+    }
 }

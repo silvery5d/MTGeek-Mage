@@ -41,6 +41,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) (loses|gains) (\\d+) life(?:\\s+(?:at combat\\s+)?from .+)?$"
     );
 
+    // PlayerB puts a card from library into their hand
+    // PlayerB puts 3 cards from library into their hand
+    private static final Pattern P_DRAW = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (a card|(\\d+) cards?) from library into their hand$"
+    );
+
     // Turn 5 (or "Turn 5: PlayerA")
     private static final Pattern P_TURN = Pattern.compile(
             "^Turn (\\d+).*"
@@ -156,6 +162,16 @@ public class MatchRecorder extends EmptyDataCollector {
             Map<String, Object> card = new LinkedHashMap<>();
             card.put("name", m.group(2));
             ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- draw ---
+        m = P_DRAW.matcher(clean);
+        if (m.matches()) {
+            int n = m.group(3) != null ? Integer.parseInt(m.group(3)) : 1;
+            ReplayEvent ev = new ReplayEvent(0, 0, "draw");
+            ev.actor = resolveActor(m.group(1));
+            ev.payload.put("n", n);
             return ev;
         }
 
