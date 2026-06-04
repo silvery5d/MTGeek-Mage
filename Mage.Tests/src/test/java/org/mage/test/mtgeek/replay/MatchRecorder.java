@@ -28,9 +28,10 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) puts (.+?) from hand onto the Battlefield$"
     );
 
-    // PlayerA casts Lightning Bolt  /  PlayerB casts Serra Angel targeting PlayerA
+    // PlayerB casts Ponder from hand  /  PlayerB casts Serra Angel from hand targeting PlayerA
+    // Anchored at "from <zone>" to avoid capturing zone suffix as part of the card name.
     private static final Pattern P_CASTS_SPELL = Pattern.compile(
-            "^(PlayerA|PlayerB) casts (.+?)(?:\\s+targeting .+)?$"
+            "^(PlayerA|PlayerB) casts (.+?) from (?:hand|library|graveyard).*$"
     );
 
     // PlayerA loses 3 life

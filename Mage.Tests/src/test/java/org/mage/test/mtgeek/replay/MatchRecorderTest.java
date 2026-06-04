@@ -68,7 +68,8 @@ public class MatchRecorderTest {
     @Test
     public void parseLogLine_playerCastsSpell_emitsCastSpellEvent() {
         MatchRecorder rec = new MatchRecorder();
-        rec.onGameLog(null, "PlayerB casts Lightning Bolt");
+        // Real XMage format: includes "from hand" zone suffix
+        rec.onGameLog(null, "PlayerB casts Lightning Bolt from hand");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(1, events.size());
         ReplayEvent e = events.get(0);
@@ -77,6 +78,20 @@ public class MatchRecorderTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> card = (Map<String, Object>) e.payload.get("card");
         assertEquals("Lightning Bolt", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_castsSpell_html_extractsCleanCardName() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "<font>PlayerB</font> casts <font>Ponder</font> from hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("cast_spell", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Ponder", card.get("name"));  // not "Ponder from hand"
     }
 
     @Test
@@ -114,7 +129,7 @@ public class MatchRecorderTest {
     public void multipleEvents_indexesIncrementCorrectly() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "PlayerA puts Mountain from hand onto the Battlefield");
-        rec.onGameLog(null, "PlayerB casts Lightning Bolt");
+        rec.onGameLog(null, "PlayerB casts Lightning Bolt from hand");
         List<ReplayEvent> events = rec.getEvents();
         assertEquals(2, events.size());
         assertEquals(0, events.get(0).i);
