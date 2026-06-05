@@ -87,15 +87,15 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
             int idx = (resp.choices != null && resp.choices.length > 0) ? resp.choices[0] : 0;
             if (idx < 0 || idx >= options.size()) {
                 // LLM returned an out-of-range index — degrade gracefully to pass.
-                DecisionLogger.logLLMFallback("priority", getName(),
+                DecisionLogger.logLLMFallback(game, "priority", getName(),
                         "LLM returned out-of-range index " + idx + " (options=" + options.size() + ")");
                 return super.priority(game);
             }
             HookOptions.Option chosen = options.get(idx);
-            DecisionLogger.logLLM("priority", getName(), chosen.label, resp.rationale);
+            DecisionLogger.logLLM(game, "priority", getName(), chosen.label, resp.rationale);
             return executePriorityChoice(idx, playable, game);
-        } catch (DecisionFailedException e) {
-            DecisionLogger.logLLMFallback("priority", getName(), e.getMessage());
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "priority", getName(), e.getMessage());
             return super.priority(game);
         }
     }
