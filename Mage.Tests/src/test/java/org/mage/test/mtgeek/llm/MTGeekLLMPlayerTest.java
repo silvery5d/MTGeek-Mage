@@ -246,5 +246,19 @@ public class MTGeekLLMPlayerTest {
                         String.class, String.class,
                         mage.abilities.Ability.class, mage.game.Game.class)
                         .getDeclaringClass());
+
+        assertEquals("choose(Outcome,Cards,TargetCard,Ability,Game) must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("choose",
+                        mage.constants.Outcome.class, mage.cards.Cards.class,
+                        mage.target.TargetCard.class, mage.abilities.Ability.class,
+                        mage.game.Game.class).getDeclaringClass());
+    }
+
+    @Test
+    public void buildChooseFromHandOptions_nullCardsReturnsEmpty() {
+        java.util.List<HookOptions.Option> opts = HookOptions.buildChooseFromHandOptions(null);
+        assertNotNull(opts);
+        assertEquals(0, opts.size());
     }
 }

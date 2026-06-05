@@ -4,12 +4,15 @@ import mage.abilities.Ability;
 import mage.abilities.ActivatedAbility;
 import mage.abilities.Mode;
 import mage.abilities.Modes;
+import mage.cards.Card;
+import mage.cards.Cards;
 import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
 import mage.game.permanent.Permanent;
 import mage.target.Target;
+import mage.target.TargetCard;
 import org.mage.test.mtgeek.MTGeekSimplePlayer;
 import org.mage.test.mtgeek.simple.DecisionLogger;
 
@@ -438,5 +441,74 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
                              String trueText, String falseText, Ability source, Game game) {
         // Delegate to the 4-arg overload, same as MTGeekSimplePlayer does.
         return chooseUse(outcome, message, source, game);
+    }
+
+    // -----------------------------------------------------------------------
+    // choose() — pick N cards from a Cards collection (e.g. Show and Tell hand).
+    // Same signature as MTGeekSimplePlayer.choose; SimplePlayer uses
+    // ValueFunction.scoreHandCardAsThreat. We route through LLM instead.
+    // -----------------------------------------------------------------------
+
+    @Override
+    public boolean choose(Outcome outcome, Cards cards, TargetCard target,
+                          Ability source, Game game) {
+        if (cards == null || cards.isEmpty()) return false;
+        List<Card> candidates = new ArrayList<>(cards.getCards(game));
+        if (candidates.size() <= 1) {
+            return super.choose(outcome, cards, target, source, game);
+        }
+        int needed = target.getMaxNumberOfTargets();
+        if (needed <= 0) needed = 1;
+
+        List<HookOptions.Option> options = HookOptions.buildChooseFromHandOptions(candidates);
+        Map<String, Object> req = GameStateSerializer.buildRequest("chooseFromHand", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+        // Extra context: outcome category + number of picks needed
+        @SuppressWarnings("unchecked")
+        Map<String, Object> state = (Map<String, Object>) req.get("state");
+        if (state != null) {
+            state.put("outcome", outcome != null ? outcome.toString() : "Unknown");
+            state.put("picks_needed", needed);
+        }
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null || resp.choices.length == 0) {
+                DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(),
+                        "LLM returned empty choices");
+                return super.choose(outcome, cards, target, source, game);
+            }
+            // Validate: all indices in range, no duplicates, length matches needed
+            Set<Integer> seen = new LinkedHashSet<>();
+            for (int idx : resp.choices) {
+                if (idx < 0 || idx >= candidates.size() || !seen.add(idx)) {
+                    DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(),
+                            "LLM returned invalid choice (idx=" + idx + ", size=" + candidates.size() + ")");
+                    return super.choose(outcome, cards, target, source, game);
+                }
+            }
+            // Trim to N if LLM over-returned; pad via super if under-returned.
+            if (seen.size() < needed) {
+                DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(),
+                        "LLM returned " + seen.size() + " picks, need " + needed);
+                return super.choose(outcome, cards, target, source, game);
+            }
+            int picked = 0;
+            StringBuilder summary = new StringBuilder();
+            for (int idx : seen) {
+                if (picked >= needed) break;
+                Card c = candidates.get(idx);
+                target.add(c.getId(), game);
+                if (picked > 0) summary.append(", ");
+                summary.append(c.getName());
+                picked++;
+            }
+            DecisionLogger.logLLM(game, "chooseFromHand", getName(),
+                    picked + " card(s): " + summary, resp.rationale);
+            return picked > 0;
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(), e.getMessage());
+            return super.choose(outcome, cards, target, source, game);
+        }
     }
 }

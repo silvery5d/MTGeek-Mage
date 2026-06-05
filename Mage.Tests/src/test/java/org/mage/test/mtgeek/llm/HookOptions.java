@@ -152,6 +152,26 @@ public class HookOptions {
     }
 
     /**
+     * Build option list for {@code chooseFromHand} (SimplePlayer.choose).
+     * Each option is one card from the Cards collection, labelled with name +
+     * mana value + type line. Used by Show and Tell, Reanimator picks, etc.
+     */
+    public static List<Option> buildChooseFromHandOptions(List<Card> cards) {
+        List<Option> out = new ArrayList<>();
+        if (cards == null) return out;
+        for (int i = 0; i < cards.size(); i++) {
+            Card c = cards.get(i);
+            int cmc = (int) c.getManaValue();
+            String type = c.getCardType() != null && !c.getCardType().isEmpty()
+                    ? c.getCardType().get(0).toString()
+                    : "?";
+            String label = c.getName() + " (cmc=" + cmc + ", " + type + ")";
+            out.add(new Option(i, label, c.getName()));
+        }
+        return out;
+    }
+
+    /**
      * Build option list for {@code chooseUse}. Fixed [No, Yes] pair so
      * {@code choices[0]==1} means "Yes". The {@code prompt} text is woven
      * into each label so the LLM sees the underlying yes/no question.
