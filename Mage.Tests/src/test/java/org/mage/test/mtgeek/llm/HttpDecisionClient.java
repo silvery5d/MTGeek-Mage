@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 
 public class HttpDecisionClient {
-    public static final String DEFAULT_ENDPOINT = "http://localhost:3000/api/mtg-decision";
+    public static final String DEFAULT_ENDPOINT = "http://127.0.0.1:3000/api/mtg-decision";
     private static final int[] DEFAULT_BACKOFF_MS = {1000, 2000, 4000};
     private static final int TIMEOUT_SEC = 30;
 
@@ -18,7 +18,7 @@ public class HttpDecisionClient {
     private final int[] backoffMs;
 
     public HttpDecisionClient() {
-        this(DEFAULT_ENDPOINT, HttpClient.newHttpClient(), DEFAULT_BACKOFF_MS);
+        this(DEFAULT_ENDPOINT, HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build(), DEFAULT_BACKOFF_MS);
     }
 
     HttpDecisionClient(String endpoint, HttpClient http, int[] backoffMs) {
@@ -55,9 +55,12 @@ public class HttpDecisionClient {
                 last = (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
             }
         }
+        String lastMsg = last != null
+            ? last.getClass().getSimpleName() + ": " + last.getMessage()
+            : "no-cause";
         throw new DecisionFailedException(
-            "LLM decision failed after " + (backoffMs.length + 1) + " attempts "
-                + "(is dev server running on " + endpoint + "?)",
+            "LLM decision failed after " + (backoffMs.length + 1) + " attempts; last error: " + lastMsg
+                + " (is dev server running on " + endpoint + "?)",
             last);
     }
 
