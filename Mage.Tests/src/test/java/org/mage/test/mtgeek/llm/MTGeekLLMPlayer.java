@@ -1,28 +1,50 @@
 package org.mage.test.mtgeek.llm;
 
+import mage.abilities.Ability;
 import mage.abilities.ActivatedAbility;
+import mage.abilities.Mode;
+import mage.abilities.Modes;
+import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.game.permanent.Permanent;
+import mage.target.Target;
 import org.mage.test.mtgeek.MTGeekSimplePlayer;
 import org.mage.test.mtgeek.simple.DecisionLogger;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
- * B2' T8 — LLM-backed player. Extends {@link MTGeekSimplePlayer}, overrides
- * only the {@code priority(Game)} hook to consult the remote MiniMax-backed
- * decision endpoint via {@link HttpDecisionClient}. All other hooks
- * ({@code selectAttackers}, {@code selectBlockers}, {@code chooseTarget},
- * {@code chooseMode}, {@code chooseUse}) are intentionally left to the parent
- * SimpleAI for this iteration — T9 end-to-end will tell us whether priority
- * alone is enough or whether more hooks need full LLM treatment.
+ * B2.x — LLM-backed player. Extends {@link MTGeekSimplePlayer} and overrides
+ * <b>all six</b> decision hooks ({@code priority}, {@code selectAttackers},
+ * {@code selectBlockers}, {@code chooseTarget}, {@code chooseMode},
+ * {@code chooseUse}) to consult the remote MiniMax-backed decision endpoint
+ * via {@link HttpDecisionClient}.
  *
- * <p>Failure mode: if the HTTP client throws {@link DecisionFailedException}
- * (network down, 503, malformed JSON, …) we log a {@code [LLM-FALLBACK|…]}
- * line and fall through to {@code super.priority(game)} so the game still
- * advances using SimpleAI's value-function logic.</p>
+ * <p>Each override follows the same pattern:</p>
+ * <ol>
+ *   <li>Trivial-skip — if there's no real choice (0 or 1 candidate, wrong
+ *       turn/player, etc.) delegate to {@code super} so we don't burn LLM
+ *       calls on forced moves.</li>
+ *   <li>Enumerate candidates the same way SimpleAI does and build a
+ *       numbered {@link HookOptions.Option} list.</li>
+ *   <li>POST the request via {@link HttpDecisionClient#decide(Map)}.</li>
+ *   <li>Decode {@code resp.choices} per hook semantics (subset / index /
+ *       boolean); validate bounds — on any mismatch fall through to
+ *       {@code super}.</li>
+ *   <li>Execute the XMage action ({@code declareAttacker},
+ *       {@code declareBlocker}, {@code target.addTarget}, …) and log via
+ *       {@link DecisionLogger}.</li>
+ *   <li>On {@link RuntimeException} from the client → log a
+ *       {@code [LLM-FALLBACK|…]} line and delegate to {@code super}.</li>
+ * </ol>
  */
 public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
@@ -119,5 +141,302 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
             return false;
         }
         return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // selectAttackers() — LLM picks a subset of eligible attackers
+    // -----------------------------------------------------------------------
+
+    @Override
+    public void selectAttackers(Game game, UUID attackingPlayerId) {
+        // Only act when it's our turn to declare attackers.
+        if (!attackingPlayerId.equals(getId())) return;
+        Set<UUID> opps = game.getOpponents(getId());
+        if (opps.isEmpty()) {
+            super.selectAttackers(game, attackingPlayerId);
+            return;
+        }
+        UUID oppId = opps.iterator().next();
+
+        // Enumerate eligible attackers same way SimplePlayer does.
+        List<Permanent> eligible = new ArrayList<>();
+        for (Permanent p : game.getBattlefield().getAllActivePermanents(getId())) {
+            if (!p.isCreature(game) || p.isTapped() || p.hasSummoningSickness()) continue;
+            if (!p.canAttack(oppId, game)) continue;
+            eligible.add(p);
+        }
+        if (eligible.isEmpty()) {
+            super.selectAttackers(game, attackingPlayerId);
+            return;
+        }
+
+        List<HookOptions.Option> options = HookOptions.buildSelectAttackersOptions(eligible, game);
+        Map<String, Object> req = GameStateSerializer.buildRequest("selectAttackers", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null) {
+                DecisionLogger.logLLMFallback(game, "selectAttackers", getName(),
+                        "LLM returned null choices");
+                super.selectAttackers(game, attackingPlayerId);
+                return;
+            }
+            // Validate every chosen index — if anything is out of range, fall back.
+            for (int idx : resp.choices) {
+                if (idx < 0 || idx >= eligible.size()) {
+                    DecisionLogger.logLLMFallback(game, "selectAttackers", getName(),
+                            "out-of-range attacker index " + idx + " (eligible=" + eligible.size() + ")");
+                    super.selectAttackers(game, attackingPlayerId);
+                    return;
+                }
+            }
+            // De-dupe — multiple identical indices are harmless but noisy.
+            Set<Integer> uniq = new LinkedHashSet<>();
+            for (int idx : resp.choices) uniq.add(idx);
+            StringBuilder picked = new StringBuilder();
+            int n = 0;
+            for (int idx : uniq) {
+                Permanent atk = eligible.get(idx);
+                declareAttacker(atk.getId(), oppId, game, false);
+                if (n > 0) picked.append(", ");
+                picked.append(atk.getName());
+                n++;
+            }
+            String summary = n + "/" + eligible.size() + " attack(s): "
+                    + (n == 0 ? "(none)" : picked.toString());
+            DecisionLogger.logLLM(game, "selectAttackers", getName(), summary, resp.rationale);
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "selectAttackers", getName(), e.getMessage());
+            super.selectAttackers(game, attackingPlayerId);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // selectBlockers() — LLM assigns each blocker to one attacker (or -1)
+    // -----------------------------------------------------------------------
+
+    @Override
+    public void selectBlockers(Ability source, Game game, UUID defendingPlayerId) {
+        if (!defendingPlayerId.equals(getId())) return;
+
+        Set<UUID> attackerIds = game.getCombat().getAttackers();
+        if (attackerIds == null || attackerIds.isEmpty()) {
+            super.selectBlockers(source, game, defendingPlayerId);
+            return;
+        }
+
+        // Stabilise attacker order — getAttackers() is a Set; we need an
+        // ordered list so the LLM's k-th choice maps deterministically to
+        // the same permanent every time.
+        List<Permanent> attackers = new ArrayList<>();
+        for (UUID id : attackerIds) {
+            Permanent a = game.getPermanent(id);
+            if (a != null) attackers.add(a);
+        }
+        // Eligible blockers — my untapped creatures not already blocking.
+        List<Permanent> blockers = new ArrayList<>();
+        for (Permanent p : game.getBattlefield().getAllActivePermanents(getId())) {
+            if (!p.isCreature(game) || p.isTapped()) continue;
+            if (p.getBlocking() != 0) continue;
+            blockers.add(p);
+        }
+        if (attackers.isEmpty() || blockers.isEmpty()) {
+            super.selectBlockers(source, game, defendingPlayerId);
+            return;
+        }
+
+        List<HookOptions.Option> options = HookOptions.buildSelectBlockersOptions(blockers, attackers);
+        Map<String, Object> req = GameStateSerializer.buildRequest("selectBlockers", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null || resp.choices.length != blockers.size()) {
+                DecisionLogger.logLLMFallback(game, "selectBlockers", getName(),
+                        "choices length " + (resp.choices == null ? "null" : resp.choices.length)
+                                + " != blockers " + blockers.size());
+                super.selectBlockers(source, game, defendingPlayerId);
+                return;
+            }
+            // Validate each entry: -1 (no block) OR a valid attacker index.
+            for (int v : resp.choices) {
+                if (v != -1 && (v < 0 || v >= attackers.size())) {
+                    DecisionLogger.logLLMFallback(game, "selectBlockers", getName(),
+                            "blocker target " + v + " out of attacker range " + attackers.size());
+                    super.selectBlockers(source, game, defendingPlayerId);
+                    return;
+                }
+            }
+            int assigned = 0;
+            StringBuilder picked = new StringBuilder();
+            for (int j = 0; j < blockers.size(); j++) {
+                int v = resp.choices[j];
+                if (v == -1) continue;
+                Permanent blocker = blockers.get(j);
+                Permanent atk = attackers.get(v);
+                this.declareBlocker(getId(), blocker.getId(), atk.getId(), game);
+                if (assigned > 0) picked.append(", ");
+                picked.append(blocker.getName()).append("→").append(atk.getName());
+                assigned++;
+            }
+            String summary = assigned + "/" + blockers.size() + " block(s): "
+                    + (assigned == 0 ? "(none)" : picked.toString());
+            DecisionLogger.logLLM(game, "selectBlockers", getName(), summary, resp.rationale);
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "selectBlockers", getName(), e.getMessage());
+            super.selectBlockers(source, game, defendingPlayerId);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // chooseTarget() — LLM picks subset of candidate target indices
+    // -----------------------------------------------------------------------
+
+    @Override
+    public boolean chooseTarget(Outcome outcome, Target target, Ability source, Game game) {
+        if (target == null) return false;
+
+        Set<UUID> possible = target.possibleTargets(getId(), source, game);
+        if (possible == null || possible.isEmpty()) {
+            return super.chooseTarget(outcome, target, source, game);
+        }
+        // No real choice — let SimpleAI's path handle the trivial cases
+        // (it also handles the "single candidate, just add it" branch).
+        if (possible.size() <= 1) {
+            return super.chooseTarget(outcome, target, source, game);
+        }
+
+        // Materialise as ordered list so LLM choices[i] points to a stable UUID.
+        List<UUID> candidates = new ArrayList<>(possible);
+
+        int needed = target.getMaxNumberOfTargets();
+        if (needed <= 0) needed = 1;
+
+        List<HookOptions.Option> options = HookOptions.buildChooseTargetOptions(candidates, game);
+        Map<String, Object> req = GameStateSerializer.buildRequest("chooseTarget", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null || resp.choices.length == 0) {
+                DecisionLogger.logLLMFallback(game, "chooseTarget", getName(),
+                        "LLM returned empty/null choices");
+                return super.chooseTarget(outcome, target, source, game);
+            }
+            // Validate each index — anything weird falls back to SimpleAI.
+            for (int idx : resp.choices) {
+                if (idx < 0 || idx >= candidates.size()) {
+                    DecisionLogger.logLLMFallback(game, "chooseTarget", getName(),
+                            "out-of-range target index " + idx + " (candidates=" + candidates.size() + ")");
+                    return super.chooseTarget(outcome, target, source, game);
+                }
+            }
+            // Cap at needed; de-dupe to avoid double-add on the same target.
+            Set<Integer> uniq = new LinkedHashSet<>();
+            for (int idx : resp.choices) {
+                uniq.add(idx);
+                if (uniq.size() >= needed) break;
+            }
+            int picked = 0;
+            StringBuilder summary = new StringBuilder();
+            for (int idx : uniq) {
+                target.addTarget(candidates.get(idx), source, game);
+                if (picked > 0) summary.append(", ");
+                summary.append(options.get(idx).label);
+                picked++;
+            }
+            DecisionLogger.logLLM(game, "chooseTarget", getName(),
+                    picked + " target(s): " + (picked == 0 ? "(none)" : summary.toString()),
+                    resp.rationale);
+            return picked > 0;
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "chooseTarget", getName(), e.getMessage());
+            return super.chooseTarget(outcome, target, source, game);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // chooseMode() — LLM picks one of the available modes
+    // -----------------------------------------------------------------------
+
+    @Override
+    public Mode chooseMode(Modes modes, Ability source, Game game) {
+        Collection<Mode> available = modes.getAvailableModes(source, game);
+        if (available == null || available.isEmpty()) {
+            return super.chooseMode(modes, source, game);
+        }
+        if (available.size() <= 1) {
+            return super.chooseMode(modes, source, game);
+        }
+
+        // Stabilise mode ordering — getAvailableModes returns List<Mode> but
+        // we accept Collection here so we always materialise our own list.
+        List<Mode> ordered = new ArrayList<>(available);
+        List<HookOptions.Option> options = HookOptions.buildChooseModeOptions(ordered);
+        Map<String, Object> req = GameStateSerializer.buildRequest("chooseMode", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null || resp.choices.length == 0) {
+                DecisionLogger.logLLMFallback(game, "chooseMode", getName(),
+                        "LLM returned empty/null choices");
+                return super.chooseMode(modes, source, game);
+            }
+            int idx = resp.choices[0];
+            if (idx < 0 || idx >= ordered.size()) {
+                DecisionLogger.logLLMFallback(game, "chooseMode", getName(),
+                        "out-of-range mode index " + idx + " (modes=" + ordered.size() + ")");
+                return super.chooseMode(modes, source, game);
+            }
+            Mode picked = ordered.get(idx);
+            DecisionLogger.logLLM(game, "chooseMode", getName(),
+                    "mode " + idx + ": " + picked.toString(), resp.rationale);
+            return picked;
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "chooseMode", getName(), e.getMessage());
+            return super.chooseMode(modes, source, game);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // chooseUse() — LLM picks Yes (1) or No (0)
+    // -----------------------------------------------------------------------
+
+    @Override
+    public boolean chooseUse(Outcome outcome, String message, Ability source, Game game) {
+        List<HookOptions.Option> options = HookOptions.buildChooseUseOptions(message);
+        Map<String, Object> req = GameStateSerializer.buildRequest("chooseUse", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            if (resp.choices == null || resp.choices.length == 0) {
+                DecisionLogger.logLLMFallback(game, "chooseUse", getName(),
+                        "LLM returned empty/null choices");
+                return super.chooseUse(outcome, message, source, game);
+            }
+            int idx = resp.choices[0];
+            if (idx != 0 && idx != 1) {
+                DecisionLogger.logLLMFallback(game, "chooseUse", getName(),
+                        "out-of-range yes/no index " + idx);
+                return super.chooseUse(outcome, message, source, game);
+            }
+            boolean yes = idx == 1;
+            DecisionLogger.logLLM(game, "chooseUse", getName(),
+                    (yes ? "YES" : "NO") + " (\"" + message + "\")", resp.rationale);
+            return yes;
+        } catch (RuntimeException e) {
+            DecisionLogger.logLLMFallback(game, "chooseUse", getName(), e.getMessage());
+            return super.chooseUse(outcome, message, source, game);
+        }
+    }
+
+    @Override
+    public boolean chooseUse(Outcome outcome, String message, String secondMessage,
+                             String trueText, String falseText, Ability source, Game game) {
+        // Delegate to the 4-arg overload, same as MTGeekSimplePlayer does.
+        return chooseUse(outcome, message, source, game);
     }
 }

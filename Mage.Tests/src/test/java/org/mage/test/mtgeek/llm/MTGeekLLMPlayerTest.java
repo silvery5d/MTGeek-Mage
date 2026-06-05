@@ -14,6 +14,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -138,5 +139,112 @@ public class MTGeekLLMPlayerTest {
         MTGeekLLMPlayer copy = p.copy();
         assertNotNull("copy() must not return null", copy);
         assertEquals("PlayerA", copy.getName());
+    }
+
+    // -----------------------------------------------------------------------
+    // B2.x — HookOptions builder coverage for the 5 newly-routed hooks.
+    // Each builder is exercised without a real Game so failures are isolated
+    // to label/index semantics. Integration with the live game engine is
+    // exercised by MTGeekLLMMatchTest (manual, @Ignore by default).
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void buildChooseUseOptions_returnsTwoIndexedYesNo() {
+        List<HookOptions.Option> opts = HookOptions.buildChooseUseOptions("Pay 2 life?");
+        assertEquals("must be [No, Yes]", 2, opts.size());
+        assertEquals(0, opts.get(0).i);
+        assertTrue("No label contains prompt",
+                opts.get(0).label.startsWith("No ") && opts.get(0).label.contains("Pay 2 life?"));
+        assertEquals(1, opts.get(1).i);
+        assertTrue("Yes label contains prompt",
+                opts.get(1).label.startsWith("Yes ") && opts.get(1).label.contains("Pay 2 life?"));
+    }
+
+    @Test
+    public void buildChooseUseOptions_nullPromptIsHandled() {
+        List<HookOptions.Option> opts = HookOptions.buildChooseUseOptions(null);
+        assertEquals(2, opts.size());
+        // Just confirm labels are non-null + don't NPE.
+        assertNotNull(opts.get(0).label);
+        assertNotNull(opts.get(1).label);
+    }
+
+    @Test
+    public void buildSelectAttackersOptions_nullInput_returnsEmpty() {
+        List<HookOptions.Option> opts = HookOptions.buildSelectAttackersOptions(null, null);
+        assertNotNull(opts);
+        assertTrue("null attacker list → empty options", opts.isEmpty());
+    }
+
+    @Test
+    public void buildSelectBlockersOptions_nullInput_returnsEmpty() {
+        List<HookOptions.Option> opts = HookOptions.buildSelectBlockersOptions(null, null);
+        assertNotNull(opts);
+        assertTrue("null blocker list → empty options", opts.isEmpty());
+    }
+
+    @Test
+    public void buildChooseTargetOptions_nullInput_returnsEmpty() {
+        List<HookOptions.Option> opts = HookOptions.buildChooseTargetOptions(null, null);
+        assertNotNull(opts);
+        assertTrue("null candidates → empty options", opts.isEmpty());
+    }
+
+    @Test
+    public void buildChooseModeOptions_nullInput_returnsEmpty() {
+        List<HookOptions.Option> opts = HookOptions.buildChooseModeOptions(null);
+        assertNotNull(opts);
+        assertTrue("null modes → empty options", opts.isEmpty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Player override structural coverage: each of the 5 newly-routed hooks
+    // is verified to be overridden on MTGeekLLMPlayer itself (not just
+    // inherited from MTGeekSimplePlayer), via reflection. This pins the
+    // override contract so future refactors can't silently drop one.
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void player_overridesAll5NewHooks() throws Exception {
+        Class<?> cls = MTGeekLLMPlayer.class;
+
+        assertEquals("selectAttackers must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("selectAttackers",
+                        mage.game.Game.class, java.util.UUID.class).getDeclaringClass());
+
+        assertEquals("selectBlockers must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("selectBlockers",
+                        mage.abilities.Ability.class, mage.game.Game.class, java.util.UUID.class)
+                        .getDeclaringClass());
+
+        assertEquals("chooseTarget(Outcome,Target,Ability,Game) must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("chooseTarget",
+                        mage.constants.Outcome.class, mage.target.Target.class,
+                        mage.abilities.Ability.class, mage.game.Game.class)
+                        .getDeclaringClass());
+
+        assertEquals("chooseMode must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("chooseMode",
+                        mage.abilities.Modes.class, mage.abilities.Ability.class, mage.game.Game.class)
+                        .getDeclaringClass());
+
+        assertEquals("chooseUse(4-arg) must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("chooseUse",
+                        mage.constants.Outcome.class, String.class,
+                        mage.abilities.Ability.class, mage.game.Game.class)
+                        .getDeclaringClass());
+
+        assertEquals("chooseUse(6-arg) must be on MTGeekLLMPlayer",
+                MTGeekLLMPlayer.class,
+                cls.getDeclaredMethod("chooseUse",
+                        mage.constants.Outcome.class, String.class, String.class,
+                        String.class, String.class,
+                        mage.abilities.Ability.class, mage.game.Game.class)
+                        .getDeclaringClass());
     }
 }
