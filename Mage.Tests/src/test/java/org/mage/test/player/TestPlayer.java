@@ -55,6 +55,7 @@ import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.mage.test.mtgeek.MTGeekSimplePlayer;
 import org.mage.test.mtgeek.MTGeekTrivialPlayer;
+import org.mage.test.mtgeek.llm.MTGeekLLMPlayer;
 import static org.mage.test.serverside.base.impl.CardTestPlayerAPIImpl.*;
 
 import java.io.Serializable;
@@ -150,6 +151,12 @@ public class TestPlayer implements Player {
     }
 
     public TestPlayer(MTGeekSimplePlayer computerPlayer) {
+        this.computerPlayer = computerPlayer;
+        AIPlayer = false;
+        computerPlayer.setTestPlayerLink(this);
+    }
+
+    public TestPlayer(MTGeekLLMPlayer computerPlayer) {
         this.computerPlayer = computerPlayer;
         AIPlayer = false;
         computerPlayer.setTestPlayerLink(this);
