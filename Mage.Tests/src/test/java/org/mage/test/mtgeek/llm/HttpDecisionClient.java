@@ -11,7 +11,10 @@ import java.util.Map;
 public class HttpDecisionClient {
     public static final String DEFAULT_ENDPOINT = "http://127.0.0.1:3000/api/mtg-decision";
     private static final int[] DEFAULT_BACKOFF_MS = {1000, 2000, 4000};
-    private static final int TIMEOUT_SEC = 30;
+    // MiniMax occasionally takes 30-60s for complex prompts (full game state +
+    // long oracle text). 30s was too tight — observed 19% timeout rate. 60s
+    // gives headroom while still capping the worst-case wait.
+    private static final int TIMEOUT_SEC = 60;
 
     private final String endpoint;
     private final HttpClient http;
