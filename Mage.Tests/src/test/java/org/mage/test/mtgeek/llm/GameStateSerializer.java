@@ -1,5 +1,8 @@
 package org.mage.test.mtgeek.llm;
 
+import mage.Mana;
+import mage.abilities.Ability;
+import mage.abilities.mana.ActivatedManaAbilityImpl;
 import mage.cards.Card;
 import mage.constants.CardType;
 import mage.constants.PhaseStep;
@@ -152,32 +155,38 @@ public class GameStateSerializer {
     }
 
     /**
-     * Simplified mana counting: tally untapped basic lands controlled by {@code me}.
-     * A future iteration can read the real mana pool once XMage exposes it cleanly.
+     * Aggregates net mana from every untapped permanent the player controls
+     * by walking each permanent's activated mana abilities and summing
+     * {@code getNetMana(game)}. Dual lands (e.g. Volcanic Island) contribute
+     * to both colors they can produce — slight over-count vs reality, but the
+     * LLM uses this as a "what colors do I have access to" signal, not a
+     * precise pool. Ancient Tomb's 2 colorless is counted correctly.
      */
     private static Map<String, Object> buildMana(Player me, Game game) {
-        Map<String, Object> mana = new LinkedHashMap<>();
-        mana.put("W", 0);
-        mana.put("U", 0);
-        mana.put("B", 0);
-        mana.put("R", 0);
-        mana.put("G", 0);
-        mana.put("C", 0);
-
+        int w = 0, u = 0, b = 0, r = 0, g = 0, c = 0;
         for (Permanent perm : game.getBattlefield().getAllActivePermanents()) {
             if (!perm.getControllerId().equals(me.getId())) continue;
             if (perm.isTapped()) continue;
-            String name = perm.getName();
-            switch (name) {
-                case "Plains":  mana.put("W", (int) mana.get("W") + 1); break;
-                case "Island":  mana.put("U", (int) mana.get("U") + 1); break;
-                case "Swamp":   mana.put("B", (int) mana.get("B") + 1); break;
-                case "Mountain": mana.put("R", (int) mana.get("R") + 1); break;
-                case "Forest":  mana.put("G", (int) mana.get("G") + 1); break;
-                case "Wastes":  mana.put("C", (int) mana.get("C") + 1); break;
-                default: break;
+            for (Ability ab : perm.getAbilities()) {
+                if (!(ab instanceof ActivatedManaAbilityImpl)) continue;
+                ActivatedManaAbilityImpl manaAb = (ActivatedManaAbilityImpl) ab;
+                for (Mana net : manaAb.getNetMana(game)) {
+                    w += net.getWhite();
+                    u += net.getBlue();
+                    b += net.getBlack();
+                    r += net.getRed();
+                    g += net.getGreen();
+                    c += net.getColorless();
+                }
             }
         }
+        Map<String, Object> mana = new LinkedHashMap<>();
+        mana.put("W", w);
+        mana.put("U", u);
+        mana.put("B", b);
+        mana.put("R", r);
+        mana.put("G", g);
+        mana.put("C", c);
         return mana;
     }
 

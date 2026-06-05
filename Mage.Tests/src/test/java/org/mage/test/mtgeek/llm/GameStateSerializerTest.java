@@ -89,6 +89,37 @@ public class GameStateSerializerTest extends CardTestPlayerBase {
     }
 
     // -----------------------------------------------------------------------
+    // Test 1b: mana_available recognises dual lands + Ancient Tomb
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void buildMana_dualLandAndAncientTomb_reportsBothColors() {
+        addCard(Zone.BATTLEFIELD, playerA, "Volcanic Island");
+        addCard(Zone.BATTLEFIELD, playerA, "Ancient Tomb");
+
+        setStrictChooseMode(true);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+
+        Map<String, Object> req = GameStateSerializer.buildRequest("priority", playerA, currentGame);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> state = (Map<String, Object>) req.get("state");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mana = (Map<String, Object>) state.get("mana_available");
+
+        // Heuristic counts — dual lands / multi-mode abilities may over-count,
+        // which is acceptable: LLM uses this as a "what colors are available"
+        // signal, not a precise pool. Assert lower bounds only.
+        assertTrue("U >= 1 from Volcanic Island", (int) mana.get("U") >= 1);
+        assertTrue("R >= 1 from Volcanic Island", (int) mana.get("R") >= 1);
+        assertTrue("C >= 2 from Ancient Tomb",    (int) mana.get("C") >= 2);
+        // No green / no white expected — Lotus Petal "any color" abilities are
+        // not in XMage's getNetMana surface, so they're invisible here. Known limit.
+        assertEquals("G should be 0 — no green sources",  0, mana.get("G"));
+        assertEquals("W should be 0 — no white sources",  0, mana.get("W"));
+    }
+
+    // -----------------------------------------------------------------------
     // Test 2: JSON encodes cleanly (no NPE / serialisation error)
     // -----------------------------------------------------------------------
 
