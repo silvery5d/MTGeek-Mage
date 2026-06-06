@@ -47,7 +47,7 @@ import static org.junit.Assert.*;
  * LLM player actually made (or attempted) at least one priority decision via the
  * remote endpoint.
  */
-// // @Ignore("Manual run: requires MTGeek dev server on localhost:3000 with MINIMAX_API_KEY set; takes 5-25 min")
+// @Ignore("Manual run: requires MTGeek dev server on localhost:3000 with MINIMAX_API_KEY set; takes 5-25 min")
 public class MTGeekLLMMatchTest extends CardTestPlayerBaseAI {
 
     private static final String DECK_A = "src/test/resources/mtgeek/show-and-tell.dck";
