@@ -112,14 +112,15 @@ public class GameStateSerializer {
 
     private static List<Map<String, Object>> buildHand(Player me, Game game) {
         List<Map<String, Object>> hand = new ArrayList<>();
-        // me.getHand() returns Cards which extends Set<UUID>
-        for (UUID cardId : me.getHand()) {
-            Card card = game.getCard(cardId);
+        // Cards.getCards(game) materializes UUID set into real Card instances —
+        // direct `for (UUID id : me.getHand())` iteration yields nothing in some
+        // game states (notably T1 before main phase fully initializes) even
+        // though Cards.size() reports the right count. Use the same idiom
+        // MTGeekSimplePlayer uses (see its scoreHandCard loop).
+        for (Card card : me.getHand().getCards(game)) {
             if (card == null) continue;
             Map<String, Object> c = new LinkedHashMap<>();
             c.put("name", card.getName());
-            // Use getRules() (no-game overload) for clean oracle text;
-            // getRules(game) adds in-game modifications which we don't want here.
             c.put("oracle_text", joinRules(card.getRules()));
             c.put("cmc", (int) card.getManaValue());
             c.put("types", typesOf(card));

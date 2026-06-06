@@ -89,6 +89,36 @@ public class GameStateSerializerTest extends CardTestPlayerBase {
     }
 
     // -----------------------------------------------------------------------
+    // Test 1c: regression — buildHand must materialize cards via getCards(game)
+    // (direct UUID iteration returns nothing in some states, see N=5 bug
+    // where 5/5 matches saw "empty hand" on T1 priority)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void buildHand_multiCard_returnsAllCards() {
+        addCard(Zone.HAND, playerA, "Lightning Bolt");
+        addCard(Zone.HAND, playerA, "Brainstorm");
+        addCard(Zone.HAND, playerA, "Mountain");
+
+        setStrictChooseMode(true);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+
+        Map<String, Object> req = GameStateSerializer.buildRequest("priority", playerA, currentGame);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> state = (Map<String, Object>) req.get("state");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> hand = (List<Map<String, Object>>) state.get("my_hand");
+        assertEquals("buildHand must return all 3 cards (not empty)", 3, hand.size());
+        // Confirm card_count consistency with hand_count
+        @SuppressWarnings("unchecked")
+        Map<String, Object> players = (Map<String, Object>) state.get("players");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> aInfo = (Map<String, Object>) players.get("A");
+        assertEquals("hand_count matches my_hand size", 3, aInfo.get("hand_count"));
+    }
+
+    // -----------------------------------------------------------------------
     // Test 1b: mana_available recognises dual lands + Ancient Tomb
     // -----------------------------------------------------------------------
 
