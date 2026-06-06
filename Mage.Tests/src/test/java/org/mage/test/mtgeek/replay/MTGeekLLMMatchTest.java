@@ -47,7 +47,7 @@ import static org.junit.Assert.*;
  * LLM player actually made (or attempted) at least one priority decision via the
  * remote endpoint.
  */
-@Ignore("Manual run: requires MTGeek dev server on localhost:3000 with MINIMAX_API_KEY set; takes 5-25 min")
+// // @Ignore("Manual run: requires MTGeek dev server on localhost:3000 with MINIMAX_API_KEY set; takes 5-25 min")
 public class MTGeekLLMMatchTest extends CardTestPlayerBaseAI {
 
     private static final String DECK_A = "src/test/resources/mtgeek/show-and-tell.dck";
@@ -92,6 +92,14 @@ public class MTGeekLLMMatchTest extends CardTestPlayerBaseAI {
 
         playerA = createPlayer(game, "PlayerA", DECK_A);
         playerB = createPlayer(game, "PlayerB", DECK_B);
+
+        // CardTestPlayerAPIImpl.execute() forces gameOptions.testMode=true which
+        // skips mulligan.drawHand() — both players start with hand=0. For real
+        // MTG matches we need a 7-card opening hand. Library is already shuffled
+        // by createPlayer (deck load). Manually draw 7 here.
+        playerA.drawCards(7, null, game);
+        playerB.drawCards(7, null, game);
+
         return game;
     }
 
