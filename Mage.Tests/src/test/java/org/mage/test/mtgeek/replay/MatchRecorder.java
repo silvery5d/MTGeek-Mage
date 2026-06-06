@@ -66,6 +66,14 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) has (lost|won) the game\\.?$"
     );
 
+    // PlayerB creates a Orc Army Token [230] token
+    // PlayerA creates 3 Treasure Tokens
+    // Trailing "[hex]" object id may or may not be present; trailing "token(s)"
+    // is also optional in some variants.
+    private static final Pattern P_TOKEN_CREATE = Pattern.compile(
+            "^(PlayerA|PlayerB) creates (?:a|(\\d+)) (.+?) tokens?\\.?$"
+    );
+
     /**
      * Fallback 正则——XMage headless 测试模式不会 emit "Turn N" 行（B3.1 研究确认；见
      * docs/research/xmage-log-formats.md）。Production 用 onGameLog 内的
@@ -230,6 +238,27 @@ public class MatchRecorder extends EmptyDataCollector {
             ReplayEvent ev = new ReplayEvent(0, 0, "life_change");
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("delta", delta);
+            return ev;
+        }
+
+        // --- token_create ---
+        // "PlayerB creates a Orc Army Token [230] token"
+        // "PlayerA creates 3 Treasure tokens"
+        // The HTML-strip earlier already removed the trailing [hex] id, so the
+        // pattern works against the post-strip "PlayerB creates a Orc Army Token tokens" form.
+        m = P_TOKEN_CREATE.matcher(clean);
+        if (m.matches()) {
+            int count = m.group(2) != null ? Integer.parseInt(m.group(2)) : 1;
+            String tokenName = m.group(3).trim();
+            // Avoid double-noun: log lines say "creates a X Token ... token" so
+            // the captured "X Token" already ends with "Token"; strip the
+            // trailing duplicate if present.
+            ReplayEvent ev = new ReplayEvent(0, 0, "token_create");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> tok = new java.util.LinkedHashMap<>();
+            tok.put("name", tokenName);
+            ev.payload.put("token", tok);
+            ev.payload.put("count", count);
             return ev;
         }
 

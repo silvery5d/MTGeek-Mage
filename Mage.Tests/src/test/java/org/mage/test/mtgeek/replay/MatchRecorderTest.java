@@ -513,4 +513,36 @@ public class MatchRecorderTest {
         assertEquals("decision", e.type);
         assertNull("Simple decision should have no rationale", e.payload.get("rationale"));
     }
+
+    @Test
+    public void parseLogLine_tokenCreate_singleA() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage format: "PlayerB creates a Orc Army Token [230] token"
+        // HTML-strip removes the [hex], leaving "PlayerB creates a Orc Army Token token".
+        rec.onGameLog(null, "PlayerB creates a Orc Army Token [230] token");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("token_create", e.type);
+        assertEquals("B", e.actor);
+        assertEquals(1, e.payload.get("count"));
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> tok = (java.util.Map<String, Object>) e.payload.get("token");
+        assertEquals("Orc Army Token", tok.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_tokenCreate_multiCountN() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA creates 3 Treasure tokens");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("token_create", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(3, e.payload.get("count"));
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> tok = (java.util.Map<String, Object>) e.payload.get("token");
+        assertEquals("Treasure", tok.get("name"));
+    }
 }
