@@ -56,16 +56,45 @@ public class HookOptions {
         for (int i = 0; i < playable.size(); i++) {
             ActivatedAbility ab = playable.get(i);
             String cardName = null;
+            mage.constants.Zone zone = null;
             if (game != null && ab.getSourceId() != null) {
                 Card src = game.getCard(ab.getSourceId());
                 if (src != null) cardName = src.getName();
+                zone = game.getState().getZone(ab.getSourceId());
+            }
+            // Distinguish action type by source zone + ability class — the same
+            // card name can produce many distinct options (cast spell, activate
+            // mana ability, activate sacrifice ability, etc.) and labelling them
+            // all "Cast X" makes them look identical in the LLM prompt and the
+            // replay log.
+            String verb;
+            if (ab instanceof mage.abilities.SpellAbility) {
+                verb = "Cast";
+            } else if (ab instanceof mage.abilities.mana.ActivatedManaAbilityImpl) {
+                verb = "Activate mana of";
+            } else if (zone == mage.constants.Zone.BATTLEFIELD) {
+                verb = "Activate ability of";
+            } else if (zone == mage.constants.Zone.HAND
+                    && cardName != null
+                    && isLand(game.getCard(ab.getSourceId()))) {
+                verb = "Play land";
+            } else {
+                verb = "Activate";
             }
             String label = cardName != null
-                    ? "Cast \"" + cardName + "\""
+                    ? verb + " \"" + cardName + "\""
                     : (ab.toString() == null ? "Activate ability" : ab.toString());
             out.add(new Option(i + 1, label, cardName));
         }
         return out;
+    }
+
+    private static boolean isLand(Card c) {
+        if (c == null) return false;
+        for (mage.constants.CardType t : c.getCardType()) {
+            if (t == mage.constants.CardType.LAND) return true;
+        }
+        return false;
     }
 
     /**

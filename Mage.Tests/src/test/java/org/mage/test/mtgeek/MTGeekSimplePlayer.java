@@ -37,8 +37,8 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
      * Cleared each time a new turn number is seen.
      * Prevents the loop: "pick Surgical Extraction → no target → fail → repeat".
      */
-    private int failedTurn = -1;
-    private final java.util.HashSet<UUID> failedThisTurn = new java.util.HashSet<>();
+    protected int failedTurn = -1;
+    protected final java.util.HashSet<UUID> failedThisTurn = new java.util.HashSet<>();
 
     public MTGeekSimplePlayer(String name, RangeOfInfluence range) {
         super(name, range);

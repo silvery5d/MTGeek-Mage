@@ -98,9 +98,22 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
             return false;
         }
 
+        // Reset per-turn failed-source tracking when a new turn begins.
+        // failedThisTurn (inherited from MTGeekSimplePlayer) prevents the LLM
+        // from being re-presented with options that already failed activation
+        // this turn — the prior bug had Lotus Petal cast successfully twice
+        // then offered again 2 more times, generating duplicate "Cast Lotus
+        // Petal" decision events with no actual cast following.
+        int thisTurn = game.getTurnNum();
+        if (thisTurn != failedTurn) {
+            failedTurn = thisTurn;
+            failedThisTurn.clear();
+        }
+
         // Same enumeration MTGeekSimplePlayer uses — keep the action list and the
         // options list index-aligned so the LLM's choice maps cleanly back.
         List<ActivatedAbility> playable = getPlayable(game, true);
+        playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
         List<HookOptions.Option> options = HookOptions.buildPriorityOptions(playable, game);
 
         // Build request payload (state + hook + actor + turn), then append options.
@@ -138,6 +151,9 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         ActivatedAbility chosen = playable.get(idx - 1);
         boolean ok = activateAbility(chosen, game);
         if (!ok) {
+            // Don't offer this ability again this turn (e.g. Surgical Extraction
+            // with no targets, Lotus Petal already sacrificed).
+            failedThisTurn.add(chosen.getSourceId());
             // Activation failed (targeting impossible, cost can't be paid, …)
             // — pass so the engine doesn't loop on the same broken pick.
             pass(game);
