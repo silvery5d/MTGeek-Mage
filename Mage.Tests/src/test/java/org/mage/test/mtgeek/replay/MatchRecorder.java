@@ -43,8 +43,10 @@ public class MatchRecorder extends EmptyDataCollector {
     // PlayerA loses 1 life from Polluted Delta
     // PlayerA loses 2 life at combat from Nethergoyf
     // PlayerB gains 5 life
+    // PlayerA loses 2 life from Ancient Tomb
+    // Captures source so UI can label Ancient Tomb / Mana Crypt mana-payment.
     private static final Pattern P_LIFE = Pattern.compile(
-            "^(PlayerA|PlayerB) (loses|gains) (\\d+) life(?:\\s+(?:at combat\\s+)?from .+)?$"
+            "^(PlayerA|PlayerB) (loses|gains) (\\d+) life(?:\\s+(at combat\\s+)?from (.+))?$"
     );
 
     // PlayerB puts a card from library into their hand
@@ -72,6 +74,33 @@ public class MatchRecorder extends EmptyDataCollector {
     // is also optional in some variants.
     private static final Pattern P_TOKEN_CREATE = Pattern.compile(
             "^(PlayerA|PlayerB) creates (?:a|(\\d+)) (.+?) tokens?\\.?$"
+    );
+
+    // PlayerB sacrificed Flooded Strand (source: Flooded Strand)
+    // After HTML-strip the [hex] tokens are gone; source clause is sometimes absent.
+    private static final Pattern P_SACRIFICE = Pattern.compile(
+            "^(PlayerA|PlayerB) sacrificed (.+?)(?: \\(source: .+?\\))?$"
+    );
+
+    // PlayerB puts Underground Sea from library onto the Battlefield (source: Flooded Strand)
+    private static final Pattern P_FETCH_LAND = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (.+?) from library onto the Battlefield(?: \\(source: (.+?)\\))?$"
+    );
+
+    // PlayerA activates: <ability text> from <source card>
+    // PlayerB activates: <ability text> from <source card> targeting <target>
+    // Pure tap-mana abilities aren't logged by XMage (they run inline during
+    // auto-pay), so only "activated ability" cast events show up here.
+    private static final Pattern P_ACTIVATE = Pattern.compile(
+            "^(PlayerA|PlayerB) activates: (.+?) from (.+?)(?: targeting (.+))?$"
+    );
+
+    // PlayerB puts a card from library to the top of their library (source: Ponder)
+    // Ponder / Brainstorm "look" effects: the actual card names stay private
+    // (XMage uses "look at" not "reveal"), so we only capture the reorder count
+    // + source — a signal that N cards were reshuffled.
+    private static final Pattern P_LIBRARY_REORDER = Pattern.compile(
+            "^(PlayerA|PlayerB) puts a card from library to the top of their library(?: \\(source: (.+?)\\))?$"
     );
 
     /**
@@ -238,6 +267,8 @@ public class MatchRecorder extends EmptyDataCollector {
             ReplayEvent ev = new ReplayEvent(0, 0, "life_change");
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("delta", delta);
+            if (m.group(5) != null) ev.payload.put("source", m.group(5).trim());
+            if (m.group(4) != null) ev.payload.put("at_combat", true);
             return ev;
         }
 
@@ -259,6 +290,55 @@ public class MatchRecorder extends EmptyDataCollector {
             tok.put("name", tokenName);
             ev.payload.put("token", tok);
             ev.payload.put("count", count);
+            return ev;
+        }
+
+        // --- fetch_land ---  (check BEFORE attack so "puts X from library onto..." wins)
+        // "PlayerB puts Underground Sea from library onto the Battlefield (source: Flooded Strand)"
+        m = P_FETCH_LAND.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "fetch_land");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            if (m.group(3) != null) ev.payload.put("source", m.group(3).trim());
+            return ev;
+        }
+
+        // --- sacrifice ---  (BEFORE attack)
+        // "PlayerB sacrificed Flooded Strand (source: Flooded Strand)"
+        m = P_SACRIFICE.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "sacrifice");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- library_reorder ---  (BEFORE activate so we win on the "puts a card from library" prefix)
+        // "PlayerB puts a card from library to the top of their library (source: Ponder)"
+        m = P_LIBRARY_REORDER.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "library_reorder");
+            ev.actor = resolveActor(m.group(1));
+            if (m.group(2) != null) ev.payload.put("source", m.group(2).trim());
+            return ev;
+        }
+
+        // --- activate (non-mana ability) ---
+        // "PlayerA activates: <text> from <source>"   (optional "targeting <X>")
+        m = P_ACTIVATE.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "activate_ability");
+            ev.actor = resolveActor(m.group(1));
+            ev.payload.put("ability", m.group(2).trim());
+            java.util.Map<String, Object> source = new java.util.LinkedHashMap<>();
+            source.put("name", m.group(3).trim());
+            ev.payload.put("source", source);
+            if (m.group(4) != null) ev.payload.put("target", m.group(4).trim());
             return ev;
         }
 

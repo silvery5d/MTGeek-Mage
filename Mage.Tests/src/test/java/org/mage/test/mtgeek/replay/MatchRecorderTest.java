@@ -532,6 +532,85 @@ public class MatchRecorderTest {
     }
 
     @Test
+    public void parseLogLine_sacrifice_emitsEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB sacrificed Flooded Strand (source: Flooded Strand)");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("sacrifice", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Flooded Strand", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_fetchLand_capturesSourceAndCard() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts Underground Sea from library onto the Battlefield (source: Flooded Strand)");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("fetch_land", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Underground Sea", card.get("name"));
+        assertEquals("Flooded Strand", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_activateAbility_emitsEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA activates: search your library for an Island or Mountain card, put it onto the battlefield, then shuffle. from Scalding Tarn");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("activate_ability", e.type);
+        assertEquals("A", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> src = (java.util.Map<String, Object>) e.payload.get("source");
+        assertEquals("Scalding Tarn", src.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_libraryReorder_capturesSource() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts a card from library to the top of their library (source: Ponder)");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("library_reorder", e.type);
+        assertEquals("B", e.actor);
+        assertEquals("Ponder", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_lifeFromSource_capturesPainland() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA loses 2 life from Ancient Tomb");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals(-2, e.payload.get("delta"));
+        assertEquals("Ancient Tomb", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_lifeAtCombat_marksAtCombat() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA loses 1 life at combat from Orcish Bowmasters");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        ReplayEvent e = events.get(0);
+        assertEquals("life_change", e.type);
+        assertEquals(-1, e.payload.get("delta"));
+        assertEquals("Orcish Bowmasters", e.payload.get("source"));
+        assertEquals(Boolean.TRUE, e.payload.get("at_combat"));
+    }
+
+    @Test
     public void parseLogLine_tokenCreate_multiCountN() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "PlayerA creates 3 Treasure tokens");
