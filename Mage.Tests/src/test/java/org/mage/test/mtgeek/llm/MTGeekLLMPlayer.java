@@ -177,6 +177,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public void selectAttackers(Game game, UUID attackingPlayerId) {
+        snapshotHandIfChanged(game);
         // Only act when it's our turn to declare attackers.
         if (!attackingPlayerId.equals(getId())) return;
         Set<UUID> opps = game.getOpponents(getId());
@@ -246,6 +247,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public void selectBlockers(Ability source, Game game, UUID defendingPlayerId) {
+        snapshotHandIfChanged(game);
         if (!defendingPlayerId.equals(getId())) return;
 
         Set<UUID> attackerIds = game.getCombat().getAttackers();
@@ -323,6 +325,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public boolean chooseTarget(Outcome outcome, Target target, Ability source, Game game) {
+        snapshotHandIfChanged(game);
         if (target == null) return false;
 
         Set<UUID> possible = target.possibleTargets(getId(), source, game);
@@ -390,6 +393,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public Mode chooseMode(Modes modes, Ability source, Game game) {
+        snapshotHandIfChanged(game);
         Collection<Mode> available = modes.getAvailableModes(source, game);
         if (available == null || available.isEmpty()) {
             return super.chooseMode(modes, source, game);
@@ -434,6 +438,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public boolean chooseUse(Outcome outcome, String message, Ability source, Game game) {
+        snapshotHandIfChanged(game);
         List<HookOptions.Option> options = HookOptions.buildChooseUseOptions(message);
         Map<String, Object> req = GameStateSerializer.buildRequest("chooseUse", this, game);
         req.put("options", HookOptions.toRequestList(options));
@@ -477,6 +482,7 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
     @Override
     public boolean choose(Outcome outcome, Cards cards, TargetCard target,
                           Ability source, Game game) {
+        snapshotHandIfChanged(game);
         if (cards == null || cards.isEmpty()) return false;
         List<Card> candidates = new ArrayList<>(cards.getCards(game));
         if (candidates.size() <= 1) {

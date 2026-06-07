@@ -361,6 +361,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
     @Override
     public boolean choose(Outcome outcome, Cards cards, TargetCard target,
                           Ability source, Game game) {
+        snapshotHandIfChanged(game);
         if (cards == null || cards.isEmpty()) return false;
 
         int needed = target.getMaxNumberOfTargets();
@@ -409,6 +410,7 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
     @Override
     public boolean chooseTarget(Outcome outcome, Target target,
                                 Ability source, Game game) {
+        snapshotHandIfChanged(game);
         if (target == null) return false;
 
         Set<UUID> possible = target.possibleTargets(getId(), source, game);
