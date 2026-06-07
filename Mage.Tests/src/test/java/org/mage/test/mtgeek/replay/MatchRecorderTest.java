@@ -532,6 +532,59 @@ public class MatchRecorderTest {
     }
 
     @Test
+    public void parseLogLine_castSpell_withTargeting_isolatesCardName() {
+        MatchRecorder rec = new MatchRecorder();
+        // Real XMage log includes "targeting X" between card and "from hand"
+        rec.onGameLog(null, "PlayerB casts Thoughtseize targeting PlayerB from hand");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("cast_spell", e.type);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("card name must NOT include 'targeting X' suffix",
+                "Thoughtseize", card.get("name"));
+        @SuppressWarnings("unchecked")
+        java.util.List<String> targets = (java.util.List<String>) e.payload.get("targets");
+        assertEquals(1, targets.size());
+        assertEquals("PlayerB", targets.get(0));
+    }
+
+    @Test
+    public void parseLogLine_combatAttacker_unblocked() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "Attacker: Orc Army Token (3/3) unblocked");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("combat_attacker", e.type);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> atk = (java.util.Map<String, Object>) e.payload.get("attacker");
+        assertEquals("Orc Army Token", atk.get("name"));
+        assertEquals(3, atk.get("power"));
+        assertEquals(3, atk.get("toughness"));
+        assertNull(e.payload.get("blocker"));
+    }
+
+    @Test
+    public void parseLogLine_combatAttacker_blocked() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "Attacker: Atraxa, Grand Unifier (7/7) blocked by Nethergoyf (4/5)");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("combat_attacker", e.type);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> atk = (java.util.Map<String, Object>) e.payload.get("attacker");
+        assertEquals("Atraxa, Grand Unifier", atk.get("name"));
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> blk = (java.util.Map<String, Object>) e.payload.get("blocker");
+        assertEquals("Nethergoyf", blk.get("name"));
+        assertEquals(4, blk.get("power"));
+        assertEquals(5, blk.get("toughness"));
+    }
+
+    @Test
     public void parseLogLine_sacrifice_emitsEvent() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "PlayerB sacrificed Flooded Strand (source: Flooded Strand)");

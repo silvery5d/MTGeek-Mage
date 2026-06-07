@@ -35,8 +35,13 @@ public class MatchRecorder extends EmptyDataCollector {
 
     // PlayerB casts Ponder from hand  /  PlayerB casts Serra Angel from hand targeting PlayerA
     // Anchored at "from <zone>" to avoid capturing zone suffix as part of the card name.
+    // "PlayerA casts Lightning Bolt from hand"
+    // "PlayerB casts Thoughtseize targeting PlayerB from hand"
+    // "PlayerA casts Surgical Extraction targeting Lotus Petal from hand"
+    // Optional " targeting X" sub-clause must NOT be folded into the card name.
+    // We separately capture it so the UI can surface targets later.
     private static final Pattern P_CASTS_SPELL = Pattern.compile(
-            "^(PlayerA|PlayerB) casts (.+?) from (?:hand|library|graveyard).*$"
+            "^(PlayerA|PlayerB) casts (.+?)(?: targeting (.+?))? from (?:hand|library|graveyard).*$"
     );
 
     // PlayerA loses 3 life
@@ -107,6 +112,13 @@ public class MatchRecorder extends EmptyDataCollector {
     // [HAND|PlayerB] (empty)
     private static final Pattern P_HAND = Pattern.compile(
             "^\\[HAND\\|(PlayerA|PlayerB)\\] (.+)$"
+    );
+
+    // "Attacker: Orc Army Token (1/1) unblocked"
+    // "Attacker: Raph & Mikey, Troublemakers (7/7) blocked by Nethergoyf (4/5)"
+    // P/T in parens reflects CURRENT power/toughness incl. +1/+1 counters.
+    private static final Pattern P_COMBAT_ATTACKER = Pattern.compile(
+            "^Attacker: (.+?) \\((\\d+)/(\\d+)\\) (?:unblocked|blocked by (.+?) \\((\\d+)/(\\d+)\\))$"
     );
 
     /**
@@ -272,6 +284,11 @@ public class MatchRecorder extends EmptyDataCollector {
             Map<String, Object> card = new LinkedHashMap<>();
             card.put("name", m.group(2));
             ev.payload.put("card", card);
+            if (m.group(3) != null) {
+                java.util.List<String> targets = new java.util.ArrayList<>();
+                targets.add(m.group(3));
+                ev.payload.put("targets", targets);
+            }
             return ev;
         }
 
@@ -376,6 +393,27 @@ public class MatchRecorder extends EmptyDataCollector {
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("target", m.group(2));
             ev.payload.put("count", Integer.parseInt(m.group(3)));
+            return ev;
+        }
+
+        // --- combat_attacker (per-attacker detail) ---
+        // "Attacker: Orc Army Token (1/1) unblocked"
+        // "Attacker: Raph & Mikey, Troublemakers (7/7) blocked by Nethergoyf (4/5)"
+        m = P_COMBAT_ATTACKER.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "combat_attacker");
+            java.util.Map<String, Object> attacker = new java.util.LinkedHashMap<>();
+            attacker.put("name", m.group(1).trim());
+            attacker.put("power", Integer.parseInt(m.group(2)));
+            attacker.put("toughness", Integer.parseInt(m.group(3)));
+            ev.payload.put("attacker", attacker);
+            if (m.group(4) != null) {
+                java.util.Map<String, Object> blocker = new java.util.LinkedHashMap<>();
+                blocker.put("name", m.group(4).trim());
+                blocker.put("power", Integer.parseInt(m.group(5)));
+                blocker.put("toughness", Integer.parseInt(m.group(6)));
+                ev.payload.put("blocker", blocker);
+            }
             return ev;
         }
 
