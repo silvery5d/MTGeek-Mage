@@ -113,6 +113,17 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         // Same enumeration MTGeekSimplePlayer uses — keep the action list and the
         // options list index-aligned so the LLM's choice maps cleanly back.
         List<ActivatedAbility> playable = getPlayable(game, true);
+        // Filter out tap-for-mana abilities (no sacrifice cost): mana empties
+        // at end of step in MTG, so activating mana with no spell to cast is
+        // pure waste. XMage auto-taps lands when casting spells anyway. We
+        // KEEP sacrifice-mana (Lotus Petal etc.) because those are one-shot
+        // strategic choices, not loops. Same filter MTGeekSimplePlayer uses.
+        playable.removeIf(ab -> {
+            if (!(ab instanceof mage.abilities.mana.ActivatedManaAbilityImpl)) return false;
+            boolean hasSacrificeCost = ab.getCosts().stream()
+                .anyMatch(c -> c instanceof mage.abilities.costs.common.SacrificeSourceCost);
+            return !hasSacrificeCost;
+        });
         playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
         List<HookOptions.Option> options = HookOptions.buildPriorityOptions(playable, game);
 
