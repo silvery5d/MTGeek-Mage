@@ -103,6 +103,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) puts a card from library to the top of their library(?: \\(source: (.+?)\\))?$"
     );
 
+    // [HAND|PlayerA] Lightning Bolt|Mountain|Show and Tell
+    // [HAND|PlayerB] (empty)
+    private static final Pattern P_HAND = Pattern.compile(
+            "^\\[HAND\\|(PlayerA|PlayerB)\\] (.+)$"
+    );
+
     /**
      * Fallback 正则——XMage headless 测试模式不会 emit "Turn N" 行（B3.1 研究确认；见
      * docs/research/xmage-log-formats.md）。Production 用 onGameLog 内的
@@ -182,6 +188,26 @@ public class MatchRecorder extends EmptyDataCollector {
 
     private ReplayEvent parseLogLine(String msg) {
         Matcher m;
+
+        // --- hand snapshot ([HAND|PlayerA] cardA|cardB|cardC) ---
+        if (msg.startsWith("[HAND|")) {
+            Matcher mh = P_HAND.matcher(msg);
+            if (!mh.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "hand_snapshot");
+            ev.actor = resolveActor(mh.group(1));
+            String rest = mh.group(2);
+            java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
+            if (!"(empty)".equals(rest)) {
+                for (String name : rest.split("\\|")) {
+                    if (name.isEmpty()) continue;
+                    java.util.Map<String, Object> c = new java.util.LinkedHashMap<>();
+                    c.put("name", name);
+                    cards.add(c);
+                }
+            }
+            ev.payload.put("cards", cards);
+            return ev;
+        }
 
         // --- LLM decision (B2' DecisionLogger.logLLM format) ---
         if (msg.startsWith("[LLM|")) {

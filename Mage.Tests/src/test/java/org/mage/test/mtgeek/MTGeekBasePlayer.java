@@ -18,6 +18,9 @@ import org.mage.test.player.TestPlayer;
 public abstract class MTGeekBasePlayer extends ComputerPlayer {
 
     protected TestPlayer testPlayerLink;
+    /** Last hand signature (sorted card names joined) — used to suppress
+     *  duplicate hand snapshots when nothing changed. */
+    private transient String lastHandSig = null;
 
     public MTGeekBasePlayer(String name, RangeOfInfluence range) {
         super(name, range);
@@ -110,5 +113,25 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
         } else {
             return testPlayerLink.isComputer();
         }
+    }
+
+    /**
+     * Emit a [HAND|...] log line via DecisionLogger.logHand, but only if the
+     * hand contents have changed since the last call. Sub-classes call this
+     * at the start of priority(Game) so the replay shows hand contents at
+     * every meaningful decision point without flooding the log.
+     */
+    protected void snapshotHandIfChanged(Game game) {
+        if (game == null) return;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (mage.cards.Card c : getHand().getCards(game)) {
+            if (c != null) names.add(c.getName());
+        }
+        java.util.List<String> sorted = new java.util.ArrayList<>(names);
+        java.util.Collections.sort(sorted);
+        String sig = String.join("|", sorted);
+        if (sig.equals(lastHandSig)) return;
+        lastHandSig = sig;
+        org.mage.test.mtgeek.simple.DecisionLogger.logHand(game, getName(), names);
     }
 }

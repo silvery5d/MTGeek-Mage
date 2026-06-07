@@ -61,6 +61,8 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
 
     @Override
     public boolean priority(Game game) {
+        // Snapshot hand contents (delta only) for replay UI hand-popover.
+        snapshotHandIfChanged(game);
         // 1) 非我方回合 / 栈非空 / 非主阶段 → pass
         if (!getId().equals(game.getActivePlayerId())) {
             pass(game);

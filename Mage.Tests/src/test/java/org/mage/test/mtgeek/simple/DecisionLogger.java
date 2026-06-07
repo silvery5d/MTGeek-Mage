@@ -40,4 +40,21 @@ public final class DecisionLogger {
         String safe = reason.replace('\n', ' ').replace('\r', ' ');
         game.informPlayers(String.format("[LLM-FALLBACK|%s:%s] reason: %s", playerName, hook, safe));
     }
+
+    /** 手牌快照：在 priority 决策前后记录，便于回放时显示该时刻手牌内容。
+     *  格式：[HAND|PlayerA] Lightning Bolt|Mountain|Show and Tell
+     *  空手牌：[HAND|PlayerA] (empty) */
+    public static void logHand(mage.game.Game game, String playerName, java.util.List<String> cardNames) {
+        if (cardNames == null || cardNames.isEmpty()) {
+            game.informPlayers(String.format("[HAND|%s] (empty)", playerName));
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cardNames.size(); i++) {
+            if (i > 0) sb.append('|');
+            // Escape pipe characters in card names just in case (unlikely but safe).
+            sb.append(cardNames.get(i).replace('|', '/'));
+        }
+        game.informPlayers(String.format("[HAND|%s] %s", playerName, sb));
+    }
 }

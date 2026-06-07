@@ -81,6 +81,8 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
 
     @Override
     public boolean priority(Game game) {
+        // Snapshot hand contents (delta only) for replay UI hand-popover.
+        snapshotHandIfChanged(game);
         // Mirror SimpleAI's "only act on my main, stack empty" guard so we don't
         // burn LLM calls on windows where the only legal move is pass anyway.
         if (!getId().equals(game.getActivePlayerId())) {
