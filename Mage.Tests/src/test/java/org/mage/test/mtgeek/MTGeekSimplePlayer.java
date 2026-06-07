@@ -113,7 +113,18 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             Card src = game.getCard(ab.getSourceId());
             if (src == null) continue;
             double s = ValueFunction.scoreCastSpell(game, src, getId(), null);
-            cands.add(new Candidate("cast", ab.getSourceId(), s, "Cast \"" + src.getName() + "\""));
+            // Distinguish ability action type by ability class + source zone, so
+            // fetchland sacrifice/search etc. don't get the misleading "Cast"
+            // verb in the decision log.
+            String verb;
+            if (ab instanceof mage.abilities.SpellAbility) {
+                verb = "Cast";
+            } else {
+                mage.constants.Zone z = game.getState().getZone(ab.getSourceId());
+                if (z == mage.constants.Zone.BATTLEFIELD) verb = "Activate ability of";
+                else verb = "Activate";
+            }
+            cands.add(new Candidate("cast", ab.getSourceId(), s, verb + " \"" + src.getName() + "\""));
         }
 
         if (canPlayLand()) {
