@@ -96,8 +96,11 @@ public class MatchRecorder extends EmptyDataCollector {
     // PlayerB activates: <ability text> from <source card> targeting <target>
     // Pure tap-mana abilities aren't logged by XMage (they run inline during
     // auto-pay), so only "activated ability" cast events show up here.
+    // GREEDY (.+) on ability text so we anchor on the LAST " from " — ability
+    // descriptions often contain "from your hand" / "from graveyard" earlier
+    // (e.g. Sneak Attack). Non-greedy would split there incorrectly.
     private static final Pattern P_ACTIVATE = Pattern.compile(
-            "^(PlayerA|PlayerB) activates: (.+?) from (.+?)(?: targeting (.+))?$"
+            "^(PlayerA|PlayerB) activates: (.+) from (.+?)(?: targeting (.+))?$"
     );
 
     // PlayerB puts a card from library to the top of their library (source: Ponder)

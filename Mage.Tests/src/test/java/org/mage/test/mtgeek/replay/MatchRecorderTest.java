@@ -551,6 +551,28 @@ public class MatchRecorderTest {
     }
 
     @Test
+    public void parseLogLine_activate_abilityTextContainsFrom_capturesCorrectSource() {
+        // Regression: P_ACTIVATE non-greedy (.+?) caused "from your hand"
+        // (inside ability text) to be picked as the separator, leaving the
+        // tail of the description in the source field. Greedy (.+) on ability
+        // text anchors on the LAST " from ".
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null,
+            "PlayerA activates: you may put a creature card from your hand onto the battlefield. " +
+            "That creature gains haste. Sacrifice the creature at the beginning of the next end step. from Sneak Attack");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("activate_ability", e.type);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> src = (java.util.Map<String, Object>) e.payload.get("source");
+        assertEquals("Sneak Attack", src.get("name"));
+        String ability = (String) e.payload.get("ability");
+        assertTrue("ability text must begin with 'you may put a creature card', got: " + ability,
+                ability.startsWith("you may put a creature card from your hand"));
+    }
+
+    @Test
     public void parseLogLine_combatAttacker_unblocked() {
         MatchRecorder rec = new MatchRecorder();
         rec.onGameLog(null, "Attacker: Orc Army Token (3/3) unblocked");

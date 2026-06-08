@@ -112,6 +112,12 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
         // activateAbility() this turn (e.g. Surgical Extraction with no targets).
         playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
         for (ActivatedAbility ab : playable) {
+            // Skip PlayLandAbility — playing a land has its own dedicated
+            // candidate path (canPlayLand loop below) with the correct
+            // "Play land" verb and scorePlayLand scoring. Including it here
+            // would double-count and produce misleading "Activate \"X\""
+            // labels for what is actually a land drop.
+            if (ab instanceof mage.abilities.PlayLandAbility) continue;
             Card src = game.getCard(ab.getSourceId());
             if (src == null) continue;
             double s = ValueFunction.scoreCastSpell(game, src, getId(), null);
