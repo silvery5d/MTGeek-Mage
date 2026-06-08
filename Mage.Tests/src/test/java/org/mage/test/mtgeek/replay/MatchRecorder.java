@@ -124,6 +124,21 @@ public class MatchRecorder extends EmptyDataCollector {
             "^Attacker: (.+?) \\((\\d+)/(\\d+)\\) (?:unblocked|blocked by (.+?) \\((\\d+)/(\\d+)\\))$"
     );
 
+    // "Underground Sea was destroyed by Wasteland"
+    // Bowmasters damage / Lightning Bolt / etc. — applies to permanents only.
+    private static final Pattern P_DESTROYED = Pattern.compile(
+            "^(.+?) was destroyed by (.+?)$"
+    );
+
+    // "PlayerA reveals X, Y, Z (source: A)"   — Atraxa ETB, Stock Up, etc.
+    // Cards revealed PUBLICLY (different from Ponder's "look at" which stays
+    // private). Names are comma-separated, can include commas in card names
+    // (e.g. "Raph & Mikey, Troublemakers" — but that's separated by ", " too).
+    // We treat the whole pre-"(source: " segment as the card list, then split on ", ".
+    private static final Pattern P_REVEALS = Pattern.compile(
+            "^(PlayerA|PlayerB) reveals (.+?)(?: \\(source: (.+?)\\))?$"
+    );
+
     /**
      * Fallback 正则——XMage headless 测试模式不会 emit "Turn N" 行（B3.1 研究确认；见
      * docs/research/xmage-log-formats.md）。Production 用 onGameLog 内的
@@ -396,6 +411,39 @@ public class MatchRecorder extends EmptyDataCollector {
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("target", m.group(2));
             ev.payload.put("count", Integer.parseInt(m.group(3)));
+            return ev;
+        }
+
+        // --- destroyed ---
+        // "Underground Sea was destroyed by Wasteland"
+        m = P_DESTROYED.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "destroyed");
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(1).trim());
+            ev.payload.put("card", card);
+            ev.payload.put("by", m.group(2).trim());
+            return ev;
+        }
+
+        // --- reveals (Atraxa ETB, Stock Up, etc.) ---
+        // "PlayerA reveals X, Y, Z (source: A)"
+        m = P_REVEALS.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "reveal");
+            ev.actor = resolveActor(m.group(1));
+            String cardsStr = m.group(2).trim();
+            // Cards separated by ", "; some card names contain "," (e.g.
+            // "Raph & Mikey, Troublemakers"). We split conservatively and
+            // accept that compound names may be split — UI shows raw text.
+            java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
+            for (String n : cardsStr.split(", ")) {
+                java.util.Map<String, Object> c = new java.util.LinkedHashMap<>();
+                c.put("name", n);
+                cards.add(c);
+            }
+            ev.payload.put("cards", cards);
+            if (m.group(3) != null) ev.payload.put("source", m.group(3).trim());
             return ev;
         }
 
