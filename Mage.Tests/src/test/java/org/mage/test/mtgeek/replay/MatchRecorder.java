@@ -33,6 +33,16 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) puts (.+?) from hand onto the Battlefield$"
     );
 
+    // "PlayerA puts Atraxa, Grand Unifier from hand onto the Battlefield (source: Sneak Attack)"
+    // "PlayerA puts Emrakul from hand onto the Battlefield (source: Show and Tell)"
+    // Distinct from P_PLAYS_LAND because the optional (source: X) suffix
+    // indicates an effect-driven put (Sneak Attack, Show and Tell, etc.) —
+    // not a normal land drop. We capture it as 'put_on_battlefield' so the
+    // reducer can add the card with the correct event type for analysis.
+    private static final Pattern P_PUT_ON_BATTLEFIELD = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (.+?) from hand onto the Battlefield \\(source: (.+?)\\)$"
+    );
+
     // PlayerB casts Ponder from hand  /  PlayerB casts Serra Angel from hand targeting PlayerA
     // Anchored at "from <zone>" to avoid capturing zone suffix as part of the card name.
     // "PlayerA casts Lightning Bolt from hand"
@@ -315,7 +325,21 @@ public class MatchRecorder extends EmptyDataCollector {
             return null; // turn-start lines don't emit an event
         }
 
-        // --- play_land ---
+        // --- put_on_battlefield (effect-driven, e.g. Sneak Attack, Show and Tell) ---
+        // CHECK BEFORE P_PLAYS_LAND because P_PLAYS_LAND would NOT match (the
+        // trailing "(source: X)" prevents it) but we want explicit handling here.
+        m = P_PUT_ON_BATTLEFIELD.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "put_on_battlefield");
+            ev.actor = resolveActor(m.group(1));
+            Map<String, Object> card = new LinkedHashMap<>();
+            card.put("name", m.group(2));
+            ev.payload.put("card", card);
+            ev.payload.put("source", m.group(3).trim());
+            return ev;
+        }
+
+        // --- play_land (no source suffix → real land drop) ---
         m = P_PLAYS_LAND.matcher(clean);
         if (m.matches()) {
             ReplayEvent ev = new ReplayEvent(0, 0, "play_land");
