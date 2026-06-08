@@ -111,10 +111,24 @@ public class MatchRecorder extends EmptyDataCollector {
             "^(PlayerA|PlayerB) puts a card from library to the top of their library(?: \\(source: (.+?)\\))?$"
     );
 
+    // "PlayerB's library is shuffled"
+    // "PlayerA's library is shuffled (source: Ponder)"
+    private static final Pattern P_SHUFFLE = Pattern.compile(
+            "^(PlayerA|PlayerB)'s library is shuffled(?: \\(source: (.+?)\\))?$"
+    );
+
     // [HAND|PlayerA] Lightning Bolt|Mountain|Show and Tell
     // [HAND|PlayerB] (empty)
     private static final Pattern P_HAND = Pattern.compile(
             "^\\[HAND\\|(PlayerA|PlayerB)\\] (.+)$"
+    );
+
+    // [LIBVIEW|PlayerA|Ponder] Lightning Bolt|Mountain|Force of Will
+    // Player's view of top N library cards (Ponder / Brainstorm / Augur etc.)
+    // emitted by MTGeekBasePlayer.snapshotLibraryViewOnce — XMage doesn't write
+    // these because they're private to the player.
+    private static final Pattern P_LIBVIEW = Pattern.compile(
+            "^\\[LIBVIEW\\|(PlayerA|PlayerB)\\|(.+?)\\] (.+)$"
     );
 
     // "Attacker: Orc Army Token (1/1) unblocked"
@@ -218,6 +232,24 @@ public class MatchRecorder extends EmptyDataCollector {
 
     private ReplayEvent parseLogLine(String msg) {
         Matcher m;
+
+        // --- library view ([LIBVIEW|PlayerA|Ponder] cardA|cardB|cardC) ---
+        if (msg.startsWith("[LIBVIEW|")) {
+            Matcher mlv = P_LIBVIEW.matcher(msg);
+            if (!mlv.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "library_view");
+            ev.actor = resolveActor(mlv.group(1));
+            ev.payload.put("source", mlv.group(2));
+            java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
+            for (String n : mlv.group(3).split("\\|")) {
+                if (n.isEmpty()) continue;
+                java.util.Map<String, Object> c = new java.util.LinkedHashMap<>();
+                c.put("name", n);
+                cards.add(c);
+            }
+            ev.payload.put("cards", cards);
+            return ev;
+        }
 
         // --- hand snapshot ([HAND|PlayerA] cardA|cardB|cardC) ---
         if (msg.startsWith("[HAND|")) {
@@ -376,6 +408,16 @@ public class MatchRecorder extends EmptyDataCollector {
             java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
             card.put("name", m.group(2).trim());
             ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- shuffle ---
+        // "PlayerA's library is shuffled (source: Ponder)"
+        m = P_SHUFFLE.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "shuffle");
+            ev.actor = resolveActor(m.group(1));
+            if (m.group(2) != null) ev.payload.put("source", m.group(2).trim());
             return ev;
         }
 

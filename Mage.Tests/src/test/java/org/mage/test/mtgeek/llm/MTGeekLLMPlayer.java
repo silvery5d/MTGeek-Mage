@@ -326,6 +326,9 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
     @Override
     public boolean chooseTarget(Outcome outcome, Target target, Ability source, Game game) {
         snapshotHandIfChanged(game);
+        if (target != null) {
+            snapshotLibraryViewOnce(game, target.possibleTargets(getId(), source, game), source);
+        }
         if (target == null) return false;
 
         Set<UUID> possible = target.possibleTargets(getId(), source, game);

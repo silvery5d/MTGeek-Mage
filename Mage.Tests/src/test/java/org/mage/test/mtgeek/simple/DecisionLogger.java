@@ -41,6 +41,21 @@ public final class DecisionLogger {
         game.informPlayers(String.format("[LLM-FALLBACK|%s:%s] reason: %s", playerName, hook, safe));
     }
 
+    /** 库顶视野快照：Ponder / Brainstorm / Augur of Bolas 等"看牌库顶 N 张"
+     *  效果触发时记录玩家看到的具体卡名。XMage 不会主动写入这些私有信息——
+     *  我们从 player 自身的 chooseTarget 钩子拦截。
+     *  格式：[LIBVIEW|PlayerA|Ponder] Lightning Bolt|Mountain|Force of Will */
+    public static void logLibraryView(mage.game.Game game, String playerName,
+                                      String source, java.util.List<String> cardNames) {
+        if (cardNames == null || cardNames.isEmpty()) return;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cardNames.size(); i++) {
+            if (i > 0) sb.append('|');
+            sb.append(cardNames.get(i).replace('|', '/'));
+        }
+        game.informPlayers(String.format("[LIBVIEW|%s|%s] %s", playerName, source, sb));
+    }
+
     /** 手牌快照：在 priority 决策前后记录，便于回放时显示该时刻手牌内容。
      *  格式：[HAND|PlayerA] Lightning Bolt|Mountain|Show and Tell
      *  空手牌：[HAND|PlayerA] (empty) */

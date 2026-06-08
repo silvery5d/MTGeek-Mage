@@ -115,6 +115,66 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
         }
     }
 
+    /** Track which ability sources we've already emitted a library-view
+     *  snapshot for, so Ponder's repeated chooseTarget calls don't spam. */
+    private final transient java.util.Set<java.util.UUID> libraryViewEmittedFor = new java.util.HashSet<>();
+
+    /**
+     * Intercept Ponder / Brainstorm / Augur etc. — XMage calls
+     * {@code controller.lookAtCards(source, titleSuffix, cards, game)} to show
+     * the player the top N cards privately. We tap that to emit a [LIBVIEW|...]
+     * log line so the replay UI can show what the player saw.
+     */
+    @Override
+    public void lookAtCards(mage.abilities.Ability source, String titleSuffix,
+                            mage.cards.Cards cards, Game game) {
+        super.lookAtCards(source, titleSuffix, cards, game);
+        if (game == null || cards == null || cards.isEmpty()) return;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (mage.cards.Card c : cards.getCards(game)) {
+            if (c != null) names.add(c.getName());
+        }
+        if (names.isEmpty()) return;
+        String srcName = "?";
+        if (source != null && source.getSourceId() != null) {
+            mage.cards.Card srcCard = game.getCard(source.getSourceId());
+            if (srcCard != null) srcName = srcCard.getName();
+        } else if (titleSuffix != null && !titleSuffix.isEmpty()) {
+            srcName = titleSuffix;
+        }
+        org.mage.test.mtgeek.simple.DecisionLogger.logLibraryView(game, getName(), srcName, names);
+    }
+
+    /**
+     * Snapshot the library top cards being offered to the player when the
+     * chooseTarget hook fires for a "look at top N library cards" effect
+     * (Ponder, Brainstorm, Augur of Bolas …). Only fires once per ability
+     * source so we capture the FULL initial view, not the progressively
+     * shrinking set as the player picks one at a time.
+     *
+     * @param possible UUIDs the player can choose from
+     * @param source   the ability triggering this choice (Ponder etc.)
+     */
+    protected void snapshotLibraryViewOnce(Game game, java.util.Set<java.util.UUID> possible,
+                                           mage.abilities.Ability source) {
+        if (game == null || possible == null || possible.isEmpty() || source == null) return;
+        java.util.UUID srcId = source.getSourceId();
+        if (srcId == null || libraryViewEmittedFor.contains(srcId)) return;
+        // Verify these are LIBRARY cards (don't snapshot for hand/battlefield targets).
+        java.util.UUID firstId = possible.iterator().next();
+        if (game.getState().getZone(firstId) != mage.constants.Zone.LIBRARY) return;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (java.util.UUID id : possible) {
+            mage.cards.Card c = game.getCard(id);
+            if (c != null) names.add(c.getName());
+        }
+        if (names.isEmpty()) return;
+        mage.cards.Card srcCard = game.getCard(srcId);
+        String srcName = srcCard != null ? srcCard.getName() : "?";
+        org.mage.test.mtgeek.simple.DecisionLogger.logLibraryView(game, getName(), srcName, names);
+        libraryViewEmittedFor.add(srcId);
+    }
+
     /**
      * Emit a [HAND|...] log line via DecisionLogger.logHand, but only if the
      * hand contents have changed since the last call. Sub-classes call this
