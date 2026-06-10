@@ -133,6 +133,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^\\[HAND\\|(PlayerA|PlayerB)\\] (.+)$"
     );
 
+    // [DRAW|PlayerA] 3 — emitted by MTGeekBasePlayer.drawCards override
+    // (XMage writes no native log line for draws).
+    private static final Pattern P_DRAW_EXPLICIT = Pattern.compile(
+            "^\\[DRAW\\|(PlayerA|PlayerB)\\] (\\d+)$"
+    );
+
     // [LIBVIEW|PlayerA|Ponder] Lightning Bolt|Mountain|Force of Will
     // Player's view of top N library cards (Ponder / Brainstorm / Augur etc.)
     // emitted by MTGeekBasePlayer.snapshotLibraryViewOnce — XMage doesn't write
@@ -173,6 +179,52 @@ public class MatchRecorder extends EmptyDataCollector {
             "^Turn (\\d+).*"
     );
 
+    // "PlayerB puts Murktide Regent from stack onto the Battlefield"
+    // Spell RESOLUTION — the moment a permanent actually enters. cast_spell
+    // alone is NOT enough: a countered spell goes stack→graveyard instead,
+    // so the reducer must wait for this line before adding to battlefield.
+    private static final Pattern P_RESOLVE_TO_BF = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (.+?) from stack onto the Battlefield$"
+    );
+
+    // "PlayerB puts Brainstorm from stack into their graveyard"
+    // Instant/sorcery finishing resolution, OR a COUNTERED spell of any type.
+    private static final Pattern P_STACK_TO_GY = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (.+?) from stack into their graveyard$"
+    );
+
+    // "PlayerB puts a card from hand to the top of their library (source: Brainstorm)"
+    // Brainstorm put-back direction (hand → library top). Card identity private.
+    private static final Pattern P_HAND_TO_LIBRARY = Pattern.compile(
+            "^(PlayerA|PlayerB) puts a card from hand to the top of their library(?: \\(source: (.+?)\\))?$"
+    );
+
+    // "PlayerA puts Force of Will from library into their hand"
+    // NAMED tutor-to-hand (Atraxa ETB pick, Stock Up pick). The anonymous
+    // variant ("a card" / "N cards") is P_DRAW — check that FIRST, this规则
+    // 的 (.+?) 否则会吞掉 "a card"。
+    private static final Pattern P_TUTOR_TO_HAND = Pattern.compile(
+            "^(PlayerA|PlayerB) puts (.+?) from library into their hand$"
+    );
+
+    // "PlayerB discards Atraxa, Grand Unifier (source: Thoughtseize)"
+    private static final Pattern P_DISCARD = Pattern.compile(
+            "^(PlayerA|PlayerB) discards (.+?)(?: \\(source: (.+?)\\))?$"
+    );
+
+    // "Ability has been fizzled: {T}, Sacrifice {this}: Destroy target nonbasic land."
+    // Informational — surfaces in EventLog so spectators understand why an
+    // activated ability had no effect (target disappeared).
+    private static final Pattern P_FIZZLE = Pattern.compile(
+            "^Ability has been fizzled: (.+)$"
+    );
+
+    // "PlayerB moves Wasteland from graveyard to the exile zone (source: Murktide Regent)"
+    // Delve / escape costs — graveyard count must shrink.
+    private static final Pattern P_GY_TO_EXILE = Pattern.compile(
+            "^(PlayerA|PlayerB) moves (.+?) from graveyard to the exile zone(?: \\(source: (.+?)\\))?$"
+    );
+
     // NOTE: block — no samples in research (all attacks were unblocked); skip per task spec.
     // NOTE: damage — folded into life_change ("loses N life at combat from <card>"); no separate type needed.
 
@@ -205,7 +257,22 @@ public class MatchRecorder extends EmptyDataCollector {
         if (message == null || message.isEmpty()) return;
         // Track current turn from live Game state (XMage doesn't emit "Turn N" log lines in headless mode)
         if (game != null) {
-            currentTurn = game.getTurnNum();
+            int liveTurn = game.getTurnNum();
+            if (liveTurn != currentTurn) {
+                currentTurn = liveTurn;
+                // Synthesize turn_start with the REAL active player — turn
+                // parity (odd=A) breaks on extra turns (Emrakul!) and "choose
+                // who goes first", so the reducer needs ground truth to untap
+                // the correct side.
+                String activeName = "";
+                if (game.getActivePlayerId() != null) {
+                    mage.players.Player ap = game.getPlayer(game.getActivePlayerId());
+                    if (ap != null) activeName = ap.getName();
+                }
+                ReplayEvent ts = new ReplayEvent(counter++, currentTurn, "turn_start");
+                ts.actor = resolveActor(activeName);
+                events.add(ts);
+            }
         }
         // 诊断模式：rawLogPath 设置时把原始 log 行追加到文件
         if (rawLogPath != null) {
@@ -262,6 +329,16 @@ public class MatchRecorder extends EmptyDataCollector {
         }
 
         // --- hand snapshot ([HAND|PlayerA] cardA|cardB|cardC) ---
+        // --- explicit draw ([DRAW|PlayerA] 3) ---
+        if (msg.startsWith("[DRAW|")) {
+            Matcher md = P_DRAW_EXPLICIT.matcher(msg);
+            if (!md.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "draw");
+            ev.actor = resolveActor(md.group(1));
+            ev.payload.put("n", Integer.parseInt(md.group(2)));
+            return ev;
+        }
+
         if (msg.startsWith("[HAND|")) {
             Matcher mh = P_HAND.matcher(msg);
             if (!mh.matches()) return null;
@@ -373,6 +450,85 @@ public class MatchRecorder extends EmptyDataCollector {
             ReplayEvent ev = new ReplayEvent(0, 0, "draw");
             ev.actor = resolveActor(m.group(1));
             ev.payload.put("n", n);
+            return ev;
+        }
+
+        // --- tutor_to_hand ---  (AFTER P_DRAW: its (.+?) would swallow "a card")
+        // "PlayerA puts Force of Will from library into their hand"
+        m = P_TUTOR_TO_HAND.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "tutor_to_hand");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- resolve_to_battlefield ---
+        // "PlayerB puts Murktide Regent from stack onto the Battlefield"
+        m = P_RESOLVE_TO_BF.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "resolve_to_battlefield");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- stack_to_graveyard ---  (instant/sorcery finishing OR countered spell)
+        // "PlayerB puts Brainstorm from stack into their graveyard"
+        m = P_STACK_TO_GY.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "stack_to_graveyard");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            return ev;
+        }
+
+        // --- hand_to_library ---  (Brainstorm put-back)
+        // "PlayerB puts a card from hand to the top of their library (source: Brainstorm)"
+        m = P_HAND_TO_LIBRARY.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "hand_to_library");
+            ev.actor = resolveActor(m.group(1));
+            if (m.group(2) != null) ev.payload.put("source", m.group(2).trim());
+            return ev;
+        }
+
+        // --- discard ---
+        // "PlayerB discards Atraxa, Grand Unifier (source: Thoughtseize)"
+        m = P_DISCARD.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "discard");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            if (m.group(3) != null) ev.payload.put("source", m.group(3).trim());
+            return ev;
+        }
+
+        // --- fizzle ---  (informational: activated ability lost its target)
+        m = P_FIZZLE.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "fizzle");
+            ev.payload.put("ability", m.group(1).trim());
+            return ev;
+        }
+
+        // --- graveyard_to_exile ---  (delve / escape: Murktide Regent etc.)
+        m = P_GY_TO_EXILE.matcher(clean);
+        if (m.matches()) {
+            ReplayEvent ev = new ReplayEvent(0, 0, "graveyard_to_exile");
+            ev.actor = resolveActor(m.group(1));
+            java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
+            card.put("name", m.group(2).trim());
+            ev.payload.put("card", card);
+            if (m.group(3) != null) ev.payload.put("source", m.group(3).trim());
             return ev;
         }
 

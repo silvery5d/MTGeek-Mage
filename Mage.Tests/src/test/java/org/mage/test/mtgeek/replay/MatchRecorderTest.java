@@ -532,6 +532,94 @@ public class MatchRecorderTest {
     }
 
     @Test
+    public void parseLogLine_resolveToBattlefield() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts Murktide Regent [a2a] from stack onto the Battlefield");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("resolve_to_battlefield", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Murktide Regent", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_stackToGraveyard_coversCounteredAndFinishedSpells() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts Brainstorm [ef1] from stack into their graveyard");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("stack_to_graveyard", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Brainstorm", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_handToLibrary_brainstormPutBack() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts a card from hand to the top of their library (source: Brainstorm [ef1])");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("hand_to_library", e.type);
+        assertEquals("B", e.actor);
+        assertEquals("Brainstorm", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_tutorToHand_namedCard() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA puts Force of Will [f69] from library into their hand");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("tutor_to_hand", e.type);
+        assertEquals("A", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Force of Will", card.get("name"));
+    }
+
+    @Test
+    public void parseLogLine_anonymousDrawStillWinsOverTutor() {
+        // "a card" must hit P_DRAW (n=1), not P_TUTOR_TO_HAND with name "a card"
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB puts a card from library into their hand");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("draw", e.type);
+        assertEquals(1, e.payload.get("n"));
+    }
+
+    @Test
+    public void parseLogLine_discard_capturesCardAndSource() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerB discards Atraxa, Grand Unifier [397] (source: Thoughtseize [d18])");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("discard", e.type);
+        assertEquals("B", e.actor);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> card = (java.util.Map<String, Object>) e.payload.get("card");
+        assertEquals("Atraxa, Grand Unifier", card.get("name"));
+        assertEquals("Thoughtseize", e.payload.get("source"));
+    }
+
+    @Test
+    public void parseLogLine_explicitDraw() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[DRAW|PlayerA] 3");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("draw", e.type);
+        assertEquals("A", e.actor);
+        assertEquals(3, e.payload.get("n"));
+    }
+
+    @Test
+    public void parseLogLine_fizzle() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "Ability has been fizzled: {T}, Sacrifice {this}: Destroy target nonbasic land.");
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("fizzle", e.type);
+        assertTrue(((String) e.payload.get("ability")).startsWith("{T}, Sacrifice"));
+    }
+
+    @Test
     public void parseLogLine_castSpell_withTargeting_isolatesCardName() {
         MatchRecorder rec = new MatchRecorder();
         // Real XMage log includes "targeting X" between card and "from hand"

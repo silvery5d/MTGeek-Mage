@@ -120,6 +120,24 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
     private final transient java.util.Set<java.util.UUID> libraryViewEmittedFor = new java.util.HashSet<>();
 
     /**
+     * XMage writes NO log line for draws (turn-draw, Brainstorm's draw-3, …) —
+     * the act of drawing N is public info even though card identity is private.
+     * Emit "[DRAW|name] n" so MatchRecorder can keep handSize/librarySize
+     * accurate (raw-log audit found the reducer drifted +1 every turn).
+     * Guard turnNum >= 1: skips the manual opening-hand drawCards(7) in test
+     * setup, which initialState() already accounts for.
+     */
+    @Override
+    public int drawCards(int num, mage.abilities.Ability source, Game game,
+                         mage.game.events.GameEvent event) {
+        int drawn = super.drawCards(num, source, game, event);
+        if (drawn > 0 && game != null && game.getTurnNum() >= 1) {
+            game.informPlayers(String.format("[DRAW|%s] %d", getName(), drawn));
+        }
+        return drawn;
+    }
+
+    /**
      * Intercept Ponder / Brainstorm / Augur etc. — XMage calls
      * {@code controller.lookAtCards(source, titleSuffix, cards, game)} to show
      * the player the top N cards privately. We tap that to emit a [LIBVIEW|...]
