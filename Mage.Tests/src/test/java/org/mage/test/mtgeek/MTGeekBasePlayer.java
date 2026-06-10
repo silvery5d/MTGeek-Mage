@@ -208,8 +208,36 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
         java.util.List<String> sorted = new java.util.ArrayList<>(names);
         java.util.Collections.sort(sorted);
         String sig = String.join("|", sorted);
-        if (sig.equals(lastHandSig)) return;
-        lastHandSig = sig;
-        org.mage.test.mtgeek.simple.DecisionLogger.logHand(game, getName(), names);
+        if (!sig.equals(lastHandSig)) {
+            lastHandSig = sig;
+            org.mage.test.mtgeek.simple.DecisionLogger.logHand(game, getName(), names);
+        }
+        // Piggyback the available-mana snapshot on the same call sites
+        // (every hook entry) — separate dedup signature.
+        snapshotManaIfChanged(game);
+    }
+
+    /** Last mana signature for dedup, same idea as lastHandSig. */
+    private transient String lastManaSig = null;
+
+    /**
+     * Emit "[MANA|name] W0 U2 …" when the heuristic available mana (untapped
+     * permanents' mana abilities, dual lands double-counted) changes. Drives
+     * the spectator UI's mana display.
+     */
+    protected void snapshotManaIfChanged(Game game) {
+        if (game == null) return;
+        java.util.Map<String, Object> mana =
+                org.mage.test.mtgeek.llm.GameStateSerializer.buildMana(this, game);
+        int w = (int) mana.getOrDefault("W", 0);
+        int u = (int) mana.getOrDefault("U", 0);
+        int b = (int) mana.getOrDefault("B", 0);
+        int r = (int) mana.getOrDefault("R", 0);
+        int g = (int) mana.getOrDefault("G", 0);
+        int c = (int) mana.getOrDefault("C", 0);
+        String sig = w + "," + u + "," + b + "," + r + "," + g + "," + c;
+        if (sig.equals(lastManaSig)) return;
+        lastManaSig = sig;
+        org.mage.test.mtgeek.simple.DecisionLogger.logMana(game, getName(), w, u, b, r, g, c);
     }
 }

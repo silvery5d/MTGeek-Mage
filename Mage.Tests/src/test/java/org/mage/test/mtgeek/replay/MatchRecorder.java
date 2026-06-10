@@ -139,6 +139,12 @@ public class MatchRecorder extends EmptyDataCollector {
             "^\\[DRAW\\|(PlayerA|PlayerB)\\] (\\d+)$"
     );
 
+    // [MANA|PlayerA] W0 U2 B0 R1 G0 C2 — available mana snapshot from
+    // MTGeekBasePlayer.snapshotManaIfChanged (untapped sources heuristic).
+    private static final Pattern P_MANA = Pattern.compile(
+            "^\\[MANA\\|(PlayerA|PlayerB)\\] W(\\d+) U(\\d+) B(\\d+) R(\\d+) G(\\d+) C(\\d+)$"
+    );
+
     // [LIBVIEW|PlayerA|Ponder] Lightning Bolt|Mountain|Force of Will
     // Player's view of top N library cards (Ponder / Brainstorm / Augur etc.)
     // emitted by MTGeekBasePlayer.snapshotLibraryViewOnce — XMage doesn't write
@@ -329,6 +335,23 @@ public class MatchRecorder extends EmptyDataCollector {
         }
 
         // --- hand snapshot ([HAND|PlayerA] cardA|cardB|cardC) ---
+        // --- mana snapshot ([MANA|PlayerA] W0 U2 B0 R1 G0 C2) ---
+        if (msg.startsWith("[MANA|")) {
+            Matcher mm = P_MANA.matcher(msg);
+            if (!mm.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "mana_snapshot");
+            ev.actor = resolveActor(mm.group(1));
+            java.util.Map<String, Object> mana = new java.util.LinkedHashMap<>();
+            mana.put("W", Integer.parseInt(mm.group(2)));
+            mana.put("U", Integer.parseInt(mm.group(3)));
+            mana.put("B", Integer.parseInt(mm.group(4)));
+            mana.put("R", Integer.parseInt(mm.group(5)));
+            mana.put("G", Integer.parseInt(mm.group(6)));
+            mana.put("C", Integer.parseInt(mm.group(7)));
+            ev.payload.put("mana", mana);
+            return ev;
+        }
+
         // --- explicit draw ([DRAW|PlayerA] 3) ---
         if (msg.startsWith("[DRAW|")) {
             Matcher md = P_DRAW_EXPLICIT.matcher(msg);

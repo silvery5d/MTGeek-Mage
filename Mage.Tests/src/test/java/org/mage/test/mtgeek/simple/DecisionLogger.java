@@ -56,6 +56,14 @@ public final class DecisionLogger {
         game.informPlayers(String.format("[LIBVIEW|%s|%s] %s", playerName, source, sb));
     }
 
+    /** 可用法术力快照：未横置永久物能产出的法术力（启发式，dual land 双计）。
+     *  格式：[MANA|PlayerA] W0 U2 B0 R1 G0 C2 */
+    public static void logMana(mage.game.Game game, String playerName,
+                               int w, int u, int b, int r, int g, int c) {
+        game.informPlayers(String.format("[MANA|%s] W%d U%d B%d R%d G%d C%d",
+            playerName, w, u, b, r, g, c));
+    }
+
     /** 手牌快照：在 priority 决策前后记录，便于回放时显示该时刻手牌内容。
      *  格式：[HAND|PlayerA] Lightning Bolt|Mountain|Show and Tell
      *  空手牌：[HAND|PlayerA] (empty) */

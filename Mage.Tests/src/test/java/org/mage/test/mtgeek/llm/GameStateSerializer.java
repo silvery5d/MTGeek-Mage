@@ -163,7 +163,8 @@ public class GameStateSerializer {
      * LLM uses this as a "what colors do I have access to" signal, not a
      * precise pool. Ancient Tomb's 2 colorless is counted correctly.
      */
-    private static Map<String, Object> buildMana(Player me, Game game) {
+    // public: also reused by MTGeekBasePlayer's [MANA|...] replay snapshot.
+    public static Map<String, Object> buildMana(Player me, Game game) {
         int w = 0, u = 0, b = 0, r = 0, g = 0, c = 0;
         for (Permanent perm : game.getBattlefield().getAllActivePermanents()) {
             if (!perm.getControllerId().equals(me.getId())) continue;
