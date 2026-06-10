@@ -262,7 +262,10 @@ public class MatchRecorder extends EmptyDataCollector {
     public void onGameLog(Game game, String message) {
         if (message == null || message.isEmpty()) return;
         // Track current turn from live Game state (XMage doesn't emit "Turn N" log lines in headless mode)
-        if (game != null) {
+        // getTurnStepType() == null means game setup (opening shuffles etc.) —
+        // activePlayerId isn't final yet, so synthesizing turn_start there
+        // produced a wrong actor (observed: actor=B for T1 when A goes first).
+        if (game != null && game.getTurnStepType() != null) {
             int liveTurn = game.getTurnNum();
             if (liveTurn != currentTurn) {
                 currentTurn = liveTurn;
@@ -618,9 +621,13 @@ public class MatchRecorder extends EmptyDataCollector {
         // "PlayerA's library is shuffled (source: Ponder)"
         m = P_SHUFFLE.matcher(clean);
         if (m.matches()) {
+            // Sourceless shuffles are game-setup deck shuffles (both players,
+            // before T1) — noise for spectators. All in-game shuffles (fetch
+            // lands, Ponder, Emrakul) carry "(source: X)".
+            if (m.group(2) == null) return null;
             ReplayEvent ev = new ReplayEvent(0, 0, "shuffle");
             ev.actor = resolveActor(m.group(1));
-            if (m.group(2) != null) ev.payload.put("source", m.group(2).trim());
+            ev.payload.put("source", m.group(2).trim());
             return ev;
         }
 

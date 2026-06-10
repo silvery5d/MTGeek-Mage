@@ -221,20 +221,21 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
     private transient String lastManaSig = null;
 
     /**
-     * Emit "[MANA|name] W0 U2 …" when the heuristic available mana (untapped
-     * permanents' mana abilities, dual lands double-counted) changes. Drives
-     * the spectator UI's mana display.
+     * Emit "[MANA|name] W0 U2 …" when the FLOATING mana pool changes.
+     * Pool semantics (not "untapped potential"): empties at each step end per
+     * MTG rules, which is what spectators expect — the earlier untapped-sources
+     * heuristic confusingly persisted across phases. The LLM request still
+     * uses GameStateSerializer.buildMana (potential) separately.
      */
     protected void snapshotManaIfChanged(Game game) {
-        if (game == null) return;
-        java.util.Map<String, Object> mana =
-                org.mage.test.mtgeek.llm.GameStateSerializer.buildMana(this, game);
-        int w = (int) mana.getOrDefault("W", 0);
-        int u = (int) mana.getOrDefault("U", 0);
-        int b = (int) mana.getOrDefault("B", 0);
-        int r = (int) mana.getOrDefault("R", 0);
-        int g = (int) mana.getOrDefault("G", 0);
-        int c = (int) mana.getOrDefault("C", 0);
+        if (game == null || getManaPool() == null) return;
+        mage.players.ManaPool pool = getManaPool();
+        int w = pool.getWhite();
+        int u = pool.getBlue();
+        int b = pool.getBlack();
+        int r = pool.getRed();
+        int g = pool.getGreen();
+        int c = pool.getColorless();
         String sig = w + "," + u + "," + b + "," + r + "," + g + "," + c;
         if (sig.equals(lastManaSig)) return;
         lastManaSig = sig;
