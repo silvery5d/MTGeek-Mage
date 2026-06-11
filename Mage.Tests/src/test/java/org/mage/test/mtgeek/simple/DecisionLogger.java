@@ -56,6 +56,20 @@ public final class DecisionLogger {
         game.informPlayers(String.format("[LIBVIEW|%s|%s] %s", playerName, source, sb));
     }
 
+    /** 牌库快照（观战回放用，顶在前）：[LIB|PlayerA] card1|card2|…
+     *  对局中这是隐藏信息，但回放是赛后产物，观众可见牌库顺序
+     *  （用于评估 Ponder/Brainstorm 等决策质量）。 */
+    public static void logLibrary(mage.game.Game game, String playerName,
+                                  java.util.List<String> cardNames) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cardNames.size(); i++) {
+            if (i > 0) sb.append('|');
+            sb.append(cardNames.get(i).replace('|', '/'));
+        }
+        game.informPlayers(String.format("[LIB|%s] %s", playerName,
+            cardNames.isEmpty() ? "(empty)" : sb));
+    }
+
     /** 可用法术力快照：未横置永久物能产出的法术力（启发式，dual land 双计）。
      *  格式：[MANA|PlayerA] W0 U2 B0 R1 G0 C2 */
     public static void logMana(mage.game.Game game, String playerName,

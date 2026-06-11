@@ -145,6 +145,11 @@ public class MatchRecorder extends EmptyDataCollector {
             "^\\[MANA\\|(PlayerA|PlayerB)\\] W(\\d+) U(\\d+) B(\\d+) R(\\d+) G(\\d+) C(\\d+)$"
     );
 
+    // [LIB|PlayerA] card1|card2|… — ordered library snapshot (top first).
+    private static final Pattern P_LIB = Pattern.compile(
+            "^\\[LIB\\|(PlayerA|PlayerB)\\] (.+)$"
+    );
+
     // [LIBVIEW|PlayerA|Ponder] Lightning Bolt|Mountain|Force of Will
     // Player's view of top N library cards (Ponder / Brainstorm / Augur etc.)
     // emitted by MTGeekBasePlayer.snapshotLibraryViewOnce — XMage doesn't write
@@ -338,6 +343,25 @@ public class MatchRecorder extends EmptyDataCollector {
         }
 
         // --- hand snapshot ([HAND|PlayerA] cardA|cardB|cardC) ---
+        // --- library snapshot ([LIB|PlayerA] card1|card2|…) ---
+        if (msg.startsWith("[LIB|")) {
+            Matcher ml = P_LIB.matcher(msg);
+            if (!ml.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "library_snapshot");
+            ev.actor = resolveActor(ml.group(1));
+            java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
+            if (!"(empty)".equals(ml.group(2))) {
+                for (String n : ml.group(2).split("\\|")) {
+                    if (n.isEmpty()) continue;
+                    java.util.Map<String, Object> c = new java.util.LinkedHashMap<>();
+                    c.put("name", n);
+                    cards.add(c);
+                }
+            }
+            ev.payload.put("cards", cards);
+            return ev;
+        }
+
         // --- mana snapshot ([MANA|PlayerA] W0 U2 B0 R1 G0 C2) ---
         if (msg.startsWith("[MANA|")) {
             Matcher mm = P_MANA.matcher(msg);

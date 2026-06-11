@@ -212,9 +212,32 @@ public abstract class MTGeekBasePlayer extends ComputerPlayer {
             lastHandSig = sig;
             org.mage.test.mtgeek.simple.DecisionLogger.logHand(game, getName(), names);
         }
-        // Piggyback the available-mana snapshot on the same call sites
-        // (every hook entry) — separate dedup signature.
+        // Piggyback the mana / library snapshots on the same call sites
+        // (every hook entry) — each with its own dedup signature.
         snapshotManaIfChanged(game);
+        snapshotLibraryIfChanged(game);
+    }
+
+    /** Last library signature for dedup. */
+    private transient String lastLibrarySig = null;
+
+    /**
+     * Emit "[LIB|name] card1|card2|…" (top first) when the library's ordered
+     * contents change. Hidden info during play, but the replay is a post-game
+     * artifact — spectators get to see what was coming (and judge Ponder
+     * decisions). Order read passively via getCardList(); never mutates.
+     */
+    protected void snapshotLibraryIfChanged(Game game) {
+        if (game == null || getLibrary() == null) return;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (java.util.UUID id : getLibrary().getCardList()) {
+            mage.cards.Card c = game.getCard(id);
+            if (c != null) names.add(c.getName());
+        }
+        String sig = String.join("|", names);
+        if (sig.equals(lastLibrarySig)) return;
+        lastLibrarySig = sig;
+        org.mage.test.mtgeek.simple.DecisionLogger.logLibrary(game, getName(), names);
     }
 
     /** Last mana signature for dedup, same idea as lastHandSig. */
