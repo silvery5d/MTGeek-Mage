@@ -150,8 +150,14 @@ public class GameStateSerializer {
 
     private static List<String> buildStack(Game game) {
         List<String> stack = new ArrayList<>();
-        // SpellStack extends ArrayDeque<StackObject> — for-each works fine
-        game.getStack().forEach(s -> stack.add(s.toString()));
+        // SpellStack extends ArrayDeque<StackObject> — for-each works fine.
+        // Prefix each entry with its controller so the LLM knows WHOSE spell
+        // is on the stack (critical for counter decisions).
+        game.getStack().forEach(s -> {
+            Player ctrl = game.getPlayer(s.getControllerId());
+            String owner = ctrl != null ? "[" + resolveActor(ctrl.getName()) + "] " : "";
+            stack.add(owner + s.toString());
+        });
         return stack;
     }
 

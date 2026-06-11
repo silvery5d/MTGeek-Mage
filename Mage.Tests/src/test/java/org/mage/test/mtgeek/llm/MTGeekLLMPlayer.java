@@ -83,22 +83,6 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
     public boolean priority(Game game) {
         // Snapshot hand contents (delta only) for replay UI hand-popover.
         snapshotHandIfChanged(game);
-        // Mirror SimpleAI's "only act on my main, stack empty" guard so we don't
-        // burn LLM calls on windows where the only legal move is pass anyway.
-        if (!getId().equals(game.getActivePlayerId())) {
-            pass(game);
-            return false;
-        }
-        if (!game.getStack().isEmpty()) {
-            pass(game);
-            return false;
-        }
-        PhaseStep step = game.getTurnStepType();
-        boolean isMain = step == PhaseStep.PRECOMBAT_MAIN || step == PhaseStep.POSTCOMBAT_MAIN;
-        if (!isMain) {
-            pass(game);
-            return false;
-        }
 
         // Reset per-turn failed-source tracking when a new turn begins.
         // failedThisTurn (inherited from MTGeekSimplePlayer) prevents the LLM
@@ -110,6 +94,34 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         if (thisTurn != failedTurn) {
             failedTurn = thisTurn;
             failedThisTurn.clear();
+        }
+
+        // === RESPOND WINDOW ===
+        // Something is on the stack and we hold priority. The old guard
+        // auto-passed here, which made counterspells (Force of Will / Daze /
+        // Spell Pierce) ARCHITECTURALLY uncastable — Dimir could never
+        // counter Show and Tell. Consult the LLM when the TOP stack object
+        // belongs to the opponent and we have legal instant-speed plays.
+        if (!game.getStack().isEmpty()) {
+            mage.game.stack.StackObject top = game.getStack().getFirst();
+            if (top != null && !getId().equals(top.getControllerId())) {
+                return respondToStack(game);
+            }
+            // Our own spell on top — responding to ourselves is rare; pass.
+            pass(game);
+            return false;
+        }
+
+        // === SORCERY-SPEED WINDOW (own main phase, empty stack) ===
+        if (!getId().equals(game.getActivePlayerId())) {
+            pass(game);
+            return false;
+        }
+        PhaseStep step = game.getTurnStepType();
+        boolean isMain = step == PhaseStep.PRECOMBAT_MAIN || step == PhaseStep.POSTCOMBAT_MAIN;
+        if (!isMain) {
+            pass(game);
+            return false;
         }
 
         // Same enumeration MTGeekSimplePlayer uses — keep the action list and the
@@ -169,6 +181,48 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Respond window: an opponent's spell/ability is on top of the stack and
+     * we hold priority. Enumerate instant-speed legal plays (XMage's
+     * getPlayable handles timing legality, including alternative costs like
+     * Force of Will's exile-a-blue-card or Daze's return-an-Island); if any
+     * exist, consult the LLM under the dedicated "respond" hook — the
+     * request's state.stack carries "[B] Cast Show and Tell" style entries
+     * so the model knows exactly what it would be countering.
+     */
+    private boolean respondToStack(Game game) {
+        List<ActivatedAbility> playable = getPlayable(game, true);
+        playable.removeIf(ab -> ab instanceof mage.abilities.mana.ActivatedManaAbilityImpl);
+        playable.removeIf(ab -> failedThisTurn.contains(ab.getSourceId()));
+        if (playable.isEmpty()) {
+            pass(game);
+            return false;
+        }
+
+        List<HookOptions.Option> options = HookOptions.buildPriorityOptions(playable, game);
+        Map<String, Object> req = GameStateSerializer.buildRequest("respond", this, game);
+        req.put("options", HookOptions.toRequestList(options));
+
+        try {
+            DecisionResponse resp = client.decide(req);
+            int idx = (resp.choices != null && resp.choices.length > 0) ? resp.choices[0] : 0;
+            if (idx < 0 || idx >= options.size()) {
+                DecisionLogger.logLLMFallback(game, "respond", getName(),
+                        "LLM returned out-of-range index " + idx + " (options=" + options.size() + ")");
+                pass(game);
+                return false;
+            }
+            HookOptions.Option chosen = options.get(idx);
+            DecisionLogger.logLLM(game, "respond", getName(), chosen.label, resp.rationale);
+            return executePriorityChoice(idx, playable, game);
+        } catch (RuntimeException e) {
+            // SimpleAI has no respond logic either — fallback is simply pass.
+            DecisionLogger.logLLMFallback(game, "respond", getName(), e.getMessage());
+            pass(game);
+            return false;
+        }
     }
 
     // -----------------------------------------------------------------------
