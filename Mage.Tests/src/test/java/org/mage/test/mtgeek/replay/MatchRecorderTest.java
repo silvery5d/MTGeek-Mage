@@ -25,6 +25,77 @@ public class MatchRecorderTest {
         assertEquals(4, ((Number) e.payload.get("candidates")).intValue());
     }
 
+    /**
+     * Replay bug 2026-08-18: LLM picked Cast "Force of Will" at respond, the
+     * engine rolled the cast back (cost unpayable), and the replay kept an
+     * orphan decision with no matching cast_spell — spectators see a "cast"
+     * that never happened. The aborted attempt must surface as its own event.
+     */
+    @Test
+    public void parseLogLine_castAborted_emitsCastAbortedEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[ABORT|PlayerA] Cast \"Force of Will\" (reason: activation failed)");
+        java.util.List<ReplayEvent> events = rec.getEvents();
+        assertEquals(1, events.size());
+        ReplayEvent e = events.get(0);
+        assertEquals("cast_aborted", e.type);
+        assertEquals("A", e.actor);
+        assertEquals("Cast \"Force of Will\"", e.payload.get("action"));
+        assertEquals("activation failed", e.payload.get("reason"));
+    }
+
+    /**
+     * Replay bug 2026-06-11: the cleanup-step log line "PlayerA discards down
+     * to 7 hand cards" matched P_DISCARD and produced a discard event whose
+     * card name was the literal text "down to 7 hand cards". The per-card
+     * discard lines that follow already carry the real names — skip this one.
+     */
+    @Test
+    public void parseLogLine_discardDownToHandSize_producesNoEvent() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "PlayerA discards down to 7 hand cards");
+        assertEquals(0, rec.getEvents().size());
+    }
+
+    /**
+     * Replay bug 2026-06-11: XMage log-object names can carry a set-code
+     * suffix ("Mishra's Bauble [aa2]") which leaked into library_view.source.
+     */
+    @Test
+    public void parseLogLine_libviewSourceWithSetCode_stripsSetCode() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.onGameLog(null, "[LIBVIEW|PlayerB|Mishra's Bauble [aa2]] Sneak Attack");
+        assertEquals(1, rec.getEvents().size());
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("library_view", e.type);
+        assertEquals("Mishra's Bauble", e.payload.get("source"));
+    }
+
+    /**
+     * Replay bug 2026-08-18: reveal lines split on ", " chopped compound card
+     * names apart — "Emrakul, the Aeons Torn" became two cards ("Emrakul" +
+     * "the Aeons Torn"), so a 10-card Atraxa reveal displayed 11 cards.
+     * With the known-card-name dictionary the recorder must re-join them.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    public void parseLogLine_revealWithCommaNames_joinsViaKnownCardNames() {
+        MatchRecorder rec = new MatchRecorder();
+        rec.addKnownCardNames(java.util.Arrays.asList(
+                "Emrakul, the Aeons Torn", "Atraxa, Grand Unifier", "Sneak Attack"));
+        rec.onGameLog(null,
+                "PlayerA reveals Emrakul, the Aeons Torn, Sneak Attack, Atraxa, Grand Unifier (source: Atraxa, Grand Unifier)");
+        assertEquals(1, rec.getEvents().size());
+        ReplayEvent e = rec.getEvents().get(0);
+        assertEquals("reveal", e.type);
+        java.util.List<Map<String, Object>> cards =
+                (java.util.List<Map<String, Object>>) e.payload.get("cards");
+        assertEquals(3, cards.size());
+        assertEquals("Emrakul, the Aeons Torn", cards.get(0).get("name"));
+        assertEquals("Sneak Attack", cards.get(1).get("name"));
+        assertEquals("Atraxa, Grand Unifier", cards.get(2).get("name"));
+    }
+
     @Test
     public void parseLogLine_decisionPlayerB_setsActorB() {
         MatchRecorder rec = new MatchRecorder();

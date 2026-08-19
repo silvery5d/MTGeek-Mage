@@ -247,6 +247,11 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
                             // Record this sourceId as failed so we don't retry it
                             // in subsequent priority() calls this same turn.
                             failedThisTurn.add(best.id);
+                            Card src = game.getCard(best.id);
+                            DecisionLogger.logCastAborted(game, getName(),
+                                    (ab instanceof mage.abilities.SpellAbility ? "Cast" : "Activate")
+                                            + " \"" + (src != null ? src.getName() : "?") + "\"",
+                                    "activation failed");
                         }
                         return ok;
                     }
@@ -381,10 +386,22 @@ public class MTGeekSimplePlayer extends MTGeekBasePlayer {
             return pickMax ? Double.compare(sb, sa) : Double.compare(sa, sb);
         });
 
+        // Add one card at a time, re-checking possibleTargets() after each add:
+        // targets like Atraxa's ("a card of each card type") shrink the legal set
+        // as picks accumulate, so a blind bulk-add would violate the constraint.
+        UUID abilityControllerId = target.getAffectedAbilityControllerId(getId());
         int picked = 0;
-        for (Card c : sorted) {
-            if (picked >= needed) break;
-            target.add(c.getId(), game);
+        while (picked < needed) {
+            Set<UUID> possible = target.possibleTargets(abilityControllerId, source, game, cards);
+            Card next = null;
+            for (Card c : sorted) {
+                if (!target.contains(c.getId()) && possible.contains(c.getId())) {
+                    next = c;
+                    break;
+                }
+            }
+            if (next == null) break;
+            target.add(next.getId(), game);
             picked++;
         }
         if (!sorted.isEmpty()) {

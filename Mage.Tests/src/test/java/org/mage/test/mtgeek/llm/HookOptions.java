@@ -19,9 +19,16 @@ public class HookOptions {
         public final int i;
         public final String label;
         public final String cardName;
+        /** Legal targets of the ability, or null when it targets nothing. */
+        public final List<String> legalTargets;
 
         public Option(int i, String label, String cardName) {
+            this(i, label, cardName, null);
+        }
+
+        public Option(int i, String label, String cardName, List<String> legalTargets) {
             this.i = i; this.label = label; this.cardName = cardName;
+            this.legalTargets = legalTargets;
         }
 
         public Map<String,Object> toMap() {
@@ -29,6 +36,7 @@ public class HookOptions {
             m.put("i", i);
             m.put("label", label);
             if (cardName != null) m.put("card_name", cardName);
+            if (legalTargets != null) m.put("legal_targets", legalTargets);
             return m;
         }
     }
@@ -84,7 +92,37 @@ public class HookOptions {
             String label = cardName != null
                     ? verb + " \"" + cardName + "\""
                     : (ab.toString() == null ? "Activate ability" : ab.toString());
-            out.add(new Option(i + 1, label, cardName));
+            out.add(new Option(i + 1, label, cardName, describeLegalTargets(ab, game)));
+        }
+        return out;
+    }
+
+    /** Cap so a Bolt-style "any target" list can't blow up the prompt. */
+    private static final int MAX_LEGAL_TARGETS = 10;
+
+    /**
+     * Enumerate the currently legal targets of an ability, tagged with whose
+     * object each one is ("yours"/"opponent's"). Returns null for abilities
+     * that target nothing, so untargeted options carry no legal_targets field.
+     * Without this the LLM casts blind — e.g. Snuff Out ("nonblack creature")
+     * imagined killing a black Atraxa while its only legal target was the
+     * caster's own Murktide Regent.
+     */
+    private static List<String> describeLegalTargets(ActivatedAbility ab, Game game) {
+        if (game == null || ab.getTargets().isEmpty()) return null;
+        List<String> out = new ArrayList<>();
+        int total = 0;
+        for (mage.target.Target t : ab.getTargets()) {
+            for (UUID id : t.possibleTargets(ab.getControllerId(), ab, game)) {
+                total++;
+                String desc = describeTarget(id, game, ab.getControllerId());
+                if (!out.contains(desc) && out.size() < MAX_LEGAL_TARGETS) {
+                    out.add(desc);
+                }
+            }
+        }
+        if (total > MAX_LEGAL_TARGETS) {
+            out.add("...(+" + (total - MAX_LEGAL_TARGETS) + " more)");
         }
         return out;
     }
@@ -151,11 +189,20 @@ public class HookOptions {
      * {@code choices} is a subset of indices (one per required target).
      */
     public static List<Option> buildChooseTargetOptions(List<UUID> candidates, Game game) {
+        return buildChooseTargetOptions(candidates, game, null);
+    }
+
+    /**
+     * povPlayerId != null tags each candidate with ownership from that
+     * player's point of view — without it the LLM can't tell its own
+     * permanents from the opponent's in the target list.
+     */
+    public static List<Option> buildChooseTargetOptions(List<UUID> candidates, Game game, UUID povPlayerId) {
         List<Option> out = new ArrayList<>();
         if (candidates == null) return out;
         for (int i = 0; i < candidates.size(); i++) {
             UUID id = candidates.get(i);
-            String label = describeTarget(id, game);
+            String label = describeTarget(id, game, povPlayerId);
             String cardName = cardNameOf(id, game);
             out.add(new Option(i, label, cardName));
         }
@@ -218,6 +265,14 @@ public class HookOptions {
     // -----------------------------------------------------------------------
 
     private static String describeTarget(UUID id, Game game) {
+        return describeTarget(id, game, null);
+    }
+
+    /**
+     * povPlayerId != null adds ownership tags ("yours"/"opponent's", "you"/
+     * "opponent") from that player's point of view.
+     */
+    private static String describeTarget(UUID id, Game game, UUID povPlayerId) {
         if (id == null) return "null";
         if (game == null) return id.toString().substring(0, 8);
         Permanent p = game.getPermanent(id);
@@ -225,10 +280,16 @@ public class HookOptions {
             String pt = p.isCreature(game)
                     ? " (" + p.getPower().getValue() + "/" + p.getToughness().getValue() + ")"
                     : "";
-            return p.getName() + pt + " [perm]";
+            String owner = povPlayerId == null ? ""
+                    : (povPlayerId.equals(p.getControllerId()) ? ", yours" : ", opponent's");
+            return p.getName() + pt + " [perm" + owner + "]";
         }
         Player pl = game.getPlayer(id);
-        if (pl != null) return pl.getName() + " (life=" + pl.getLife() + ") [player]";
+        if (pl != null) {
+            String who = povPlayerId == null ? ""
+                    : (povPlayerId.equals(id) ? ", you" : ", opponent");
+            return pl.getName() + " (life=" + pl.getLife() + ") [player" + who + "]";
+        }
         Card c = game.getCard(id);
         if (c != null) return c.getName() + " [card]";
         return "target-" + id.toString().substring(0, 8);

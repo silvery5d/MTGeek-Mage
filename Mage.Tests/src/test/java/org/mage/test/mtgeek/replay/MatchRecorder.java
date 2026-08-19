@@ -19,6 +19,13 @@ public class MatchRecorder extends EmptyDataCollector {
             "^\\[LLM\\|([^:]+):([^\\]]+)\\] picked: (.+?); rationale: (.+)$"
     );
 
+    // [ABORT|PlayerA] Cast "Force of Will" (reason: activation failed)
+    // A picked cast/activate the engine rolled back — without this the replay
+    // keeps an orphan decision with no matching cast_spell.
+    private static final Pattern P_CAST_ABORTED = Pattern.compile(
+            "^\\[ABORT\\|([^\\]]+)\\] (.+?) \\(reason: (.+)\\)$"
+    );
+
     // [Simple|PlayerA:priority] picked: Cast "Lightning Bolt" (score=15.50); runner-up: Pass (score=-1.50); n=4
     private static final Pattern P_DECISION = Pattern.compile(
             "^\\[Simple\\|([^:]+):([^\\]]+)\\] picked: (.+?) \\(score=([-\\d.]+)\\)" +
@@ -244,6 +251,49 @@ public class MatchRecorder extends EmptyDataCollector {
     private int currentTurn = 0;
     private boolean gameEndedEmitted = false;
 
+    /**
+     * All card names in this game (both decks). Used to re-join compound
+     * names ("Emrakul, the Aeons Torn") that the reveal line's ", " split
+     * chops apart. Filled from the Game at onGameStart; tests may inject.
+     */
+    private final java.util.Set<String> knownCardNames = new java.util.HashSet<>();
+
+    public void addKnownCardNames(java.util.Collection<String> names) {
+        knownCardNames.addAll(names);
+    }
+
+    /** "Mishra's Bauble [aa2]" → "Mishra's Bauble" (XMage log-object set-code suffix). */
+    private static String stripSetCode(String name) {
+        return name.replaceAll("\\s*\\[[a-z0-9]{2,6}\\]$", "");
+    }
+
+    /**
+     * Split a ", "-separated card list, greedily re-joining consecutive
+     * tokens that form a known compound card name (longest match first).
+     * Unknown single tokens pass through unchanged.
+     */
+    private List<String> splitCardList(String s) {
+        String[] toks = s.split(", ");
+        List<String> out = new ArrayList<>();
+        int i = 0;
+        while (i < toks.length) {
+            int consumed = 1;
+            String picked = toks[i];
+            // MTG card names contain at most a couple of commas — cap the probe at 3 tokens.
+            for (int j = Math.min(toks.length - 1, i + 2); j > i; j--) {
+                String cand = String.join(", ", java.util.Arrays.copyOfRange(toks, i, j + 1));
+                if (knownCardNames.contains(cand)) {
+                    picked = cand;
+                    consumed = j - i + 1;
+                    break;
+                }
+            }
+            out.add(picked);
+            i += consumed;
+        }
+        return out;
+    }
+
     // 诊断模式：rawLogPath 非 null 时，把每一条原始 log 行追加到文件（零开销 when null）
     private java.nio.file.Path rawLogPath;
 
@@ -261,6 +311,16 @@ public class MatchRecorder extends EmptyDataCollector {
         counter = 0;
         currentTurn = 0;
         gameEndedEmitted = false;
+        if (game != null) {
+            for (mage.players.Player p : game.getPlayers().values()) {
+                for (mage.cards.Card c : p.getLibrary().getCards(game)) {
+                    knownCardNames.add(c.getName());
+                }
+                for (mage.cards.Card c : p.getHand().getCards(game)) {
+                    knownCardNames.add(c.getName());
+                }
+            }
+        }
     }
 
     @Override
@@ -330,7 +390,7 @@ public class MatchRecorder extends EmptyDataCollector {
             if (!mlv.matches()) return null;
             ReplayEvent ev = new ReplayEvent(0, 0, "library_view");
             ev.actor = resolveActor(mlv.group(1));
-            ev.payload.put("source", mlv.group(2));
+            ev.payload.put("source", stripSetCode(mlv.group(2)));
             java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
             for (String n : mlv.group(3).split("\\|")) {
                 if (n.isEmpty()) continue;
@@ -405,6 +465,17 @@ public class MatchRecorder extends EmptyDataCollector {
                 }
             }
             ev.payload.put("cards", cards);
+            return ev;
+        }
+
+        // --- cast aborted (DecisionLogger.logCastAborted format) ---
+        if (msg.startsWith("[ABORT|")) {
+            Matcher mAbort = P_CAST_ABORTED.matcher(msg);
+            if (!mAbort.matches()) return null;
+            ReplayEvent ev = new ReplayEvent(0, 0, "cast_aborted");
+            ev.actor = resolveActor(mAbort.group(1));
+            ev.payload.put("action", mAbort.group(2));
+            ev.payload.put("reason", mAbort.group(3));
             return ev;
         }
 
@@ -553,6 +624,9 @@ public class MatchRecorder extends EmptyDataCollector {
         // "PlayerB discards Atraxa, Grand Unifier (source: Thoughtseize)"
         m = P_DISCARD.matcher(clean);
         if (m.matches()) {
+            // Cleanup-step summary line ("discards down to 7 hand cards") is not
+            // a card — the per-card discard lines that follow carry the names.
+            if (m.group(2).startsWith("down to ")) return null;
             ReplayEvent ev = new ReplayEvent(0, 0, "discard");
             ev.actor = resolveActor(m.group(1));
             java.util.Map<String, Object> card = new java.util.LinkedHashMap<>();
@@ -709,11 +783,11 @@ public class MatchRecorder extends EmptyDataCollector {
             ReplayEvent ev = new ReplayEvent(0, 0, "reveal");
             ev.actor = resolveActor(m.group(1));
             String cardsStr = m.group(2).trim();
-            // Cards separated by ", "; some card names contain "," (e.g.
-            // "Raph & Mikey, Troublemakers"). We split conservatively and
-            // accept that compound names may be split — UI shows raw text.
+            // Cards separated by ", " — but card names themselves contain ","
+            // ("Emrakul, the Aeons Torn"), so re-join tokens against the
+            // known-card-name dictionary collected at onGameStart.
             java.util.List<java.util.Map<String, Object>> cards = new java.util.ArrayList<>();
-            for (String n : cardsStr.split(", ")) {
+            for (String n : splitCardList(cardsStr)) {
                 java.util.Map<String, Object> c = new java.util.LinkedHashMap<>();
                 c.put("name", n);
                 cards.add(c);

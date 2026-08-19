@@ -1,15 +1,32 @@
 package org.mage.test.mtgeek.simple;
 
+import mage.abilities.Ability;
+import mage.abilities.assignment.common.CardTypeAssignment;
+import mage.cards.Card;
+import mage.cards.Cards;
+import mage.cards.CardsImpl;
+import mage.constants.CardType;
+import mage.constants.Outcome;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.constants.Zone;
+import mage.filter.FilterCard;
+import mage.game.Game;
+import mage.players.Player;
+import mage.target.TargetCard;
+import mage.target.common.TargetCardInLibrary;
 import org.junit.Test;
 import org.mage.test.mtgeek.MTGeekSimplePlayer;
 import org.mage.test.player.TestPlayer;
 import org.mage.test.serverside.base.CardTestPlayerBaseAI;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.Assert.assertTrue;
 
@@ -117,5 +134,124 @@ public class MTGeekSimplePlayerTest extends CardTestPlayerBaseAI {
         // 3/3 blocks 2/2: PlayerA should take 0 combat damage (life stays at 20)
         assertTrue("3/3 应挡住 2/2，PlayerA life 应为 20，实测=" + playerA.getLife(),
                 playerA.getLife() == 20);
+    }
+
+    /**
+     * Mirror of AtraxaGrandUnifierTarget (package-private in Mage.Sets):
+     * "up to any number" of cards, but possibleTargets() forbids adding a card
+     * that shares a card type with an already-chosen one.
+     */
+    static class OnePerTypeTarget extends TargetCardInLibrary {
+        private static final CardTypeAssignment cardTypeAssigner
+                = new CardTypeAssignment(Arrays.stream(CardType.values()).toArray(CardType[]::new));
+
+        OnePerTypeTarget() {
+            super(0, Integer.MAX_VALUE, new FilterCard("a card of each card type"));
+        }
+
+        private OnePerTypeTarget(final OnePerTypeTarget target) {
+            super(target);
+        }
+
+        @Override
+        public OnePerTypeTarget copy() {
+            return new OnePerTypeTarget(this);
+        }
+
+        @Override
+        public Set<UUID> possibleTargets(UUID sourceControllerId, Ability source, Game game) {
+            Set<UUID> possibleTargets = super.possibleTargets(sourceControllerId, source, game);
+            Cards existingTargets = new CardsImpl(this.getTargets());
+            possibleTargets.removeIf(id -> {
+                Card card = game.getCard(id);
+                if (card == null) {
+                    return true;
+                }
+                Cards newTargets = existingTargets.copy();
+                newTargets.add(card);
+                return cardTypeAssigner.hasSharedRoles(newTargets, game);
+            });
+            return possibleTargets;
+        }
+    }
+
+    /**
+     * Replay bug 2026-06-11: Atraxa's ETB ("for each card type, you may put A card
+     * of that type into your hand") let the AI grab all 10 revealed cards because
+     * choose() blind-added everything, ignoring target.possibleTargets().
+     * With 10 cards of 6 types on top, a legal choice can hold at most one card
+     * of each card type.
+     */
+    @Test
+    public void choose_onePerTypeTarget_neverPicksTwoCardsOfSameType() {
+        removeAllCardsFromLibrary(playerA);
+        addCard(Zone.LIBRARY, playerA, "Island", 2);          // land
+        addCard(Zone.LIBRARY, playerA, "Lightning Bolt", 2);  // instant
+        addCard(Zone.LIBRARY, playerA, "Grizzly Bears", 2);   // creature
+        addCard(Zone.LIBRARY, playerA, "Divination", 2);      // sorcery
+        addCard(Zone.LIBRARY, playerA, "Sol Ring", 1);        // artifact
+        addCard(Zone.LIBRARY, playerA, "Omniscience", 1);     // enchantment
+
+        setStopAt(1, PhaseStep.UPKEEP);
+        execute();
+
+        Player a = currentGame.getPlayer(playerA.getId());
+        Cards revealed = new CardsImpl(a.getLibrary().getTopCards(currentGame, 10));
+        assertTrue("测试前提：库顶应有 10 张已知牌", revealed.size() == 10);
+
+        TargetCard target = new OnePerTypeTarget();
+        MTGeekSimplePlayer ai = (MTGeekSimplePlayer) playerA.getComputerPlayer();
+        ai.choose(Outcome.DrawCard, revealed, target, null, currentGame);
+
+        Map<CardType, Integer> counts = new EnumMap<>(CardType.class);
+        for (UUID id : target.getTargets()) {
+            Card c = currentGame.getCard(id);
+            for (CardType t : c.getCardType(currentGame)) {
+                counts.merge(t, 1, Integer::sum);
+            }
+        }
+        counts.forEach((type, n) -> assertTrue(
+                "每种牌张类别至多选 1 张，但 " + type + " 选了 " + n + " 张（共选 "
+                        + target.getTargets().size() + " 张）",
+                n <= 1));
+        assertTrue("至少应选中 1 张", !target.getTargets().isEmpty());
+    }
+
+    /**
+     * End-to-end on the real card: AI casts Atraxa, Grand Unifier with 7 mana up;
+     * her ETB reveals the top 10 and may take at most one card per card type.
+     * With the blind-add bug all 10 went to hand and the library emptied.
+     */
+    @Test
+    public void castAtraxa_etbTakesAtMostOneCardPerType() {
+        removeAllCardsFromLibrary(playerA);
+        addCard(Zone.LIBRARY, playerA, "Island", 2);          // land
+        addCard(Zone.LIBRARY, playerA, "Lightning Bolt", 2);  // instant
+        addCard(Zone.LIBRARY, playerA, "Grizzly Bears", 2);   // creature
+        addCard(Zone.LIBRARY, playerA, "Divination", 2);      // sorcery
+        addCard(Zone.LIBRARY, playerA, "Sol Ring", 1);        // artifact
+        addCard(Zone.LIBRARY, playerA, "Omniscience", 1);     // enchantment
+        addCard(Zone.HAND, playerA, "Atraxa, Grand Unifier", 1);
+        addCard(Zone.BATTLEFIELD, playerA, "Mana Confluence", 7);
+
+        setStopAt(1, PhaseStep.END_TURN);
+        execute();
+
+        assertPermanentCount(playerA, "Atraxa, Grand Unifier", 1);
+
+        Player a = currentGame.getPlayer(playerA.getId());
+        // 至多每类别 1 张（6 类）→ 牌库至少剩 4 张；全拿 bug 会把牌库掏空。
+        assertTrue("Atraxa ETB 后牌库应至少剩 4 张，实测=" + a.getLibrary().size(),
+                a.getLibrary().size() >= 4);
+
+        Map<CardType, Integer> counts = new EnumMap<>(CardType.class);
+        for (Card c : a.getHand().getCards(currentGame)) {
+            for (CardType t : c.getCardType(currentGame)) {
+                counts.merge(t, 1, Integer::sum);
+            }
+        }
+        counts.forEach((type, n) -> assertTrue(
+                "ETB 拿牌每类别至多 1 张，但手牌里 " + type + " 有 " + n + " 张",
+                n <= 1));
     }
 }

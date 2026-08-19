@@ -41,6 +41,15 @@ public final class DecisionLogger {
         game.informPlayers(String.format("[LLM-FALLBACK|%s:%s] reason: %s", playerName, hook, safe));
     }
 
+    /** 施放/激活尝试被引擎回滚（付费失败、目标非法等）。
+     *  MatchRecorder 据此生成 cast_aborted 事件，否则 replay 里只剩一条
+     *  孤儿 decision，观众会以为施放成功了。
+     *  格式：[ABORT|PlayerA] Cast "Force of Will" (reason: activation failed) */
+    public static void logCastAborted(mage.game.Game game, String playerName,
+                                      String actionDesc, String reason) {
+        game.informPlayers(String.format("[ABORT|%s] %s (reason: %s)", playerName, actionDesc, reason));
+    }
+
     /** 库顶视野快照：Ponder / Brainstorm / Augur of Bolas 等"看牌库顶 N 张"
      *  效果触发时记录玩家看到的具体卡名。XMage 不会主动写入这些私有信息——
      *  我们从 player 自身的 chooseTarget 钩子拦截。

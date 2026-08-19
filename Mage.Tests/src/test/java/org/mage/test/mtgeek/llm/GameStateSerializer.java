@@ -45,6 +45,26 @@ public class GameStateSerializer {
         return req;
     }
 
+    /**
+     * Describes the effect that INITIATED the current choice: which card and
+     * whose it is. Without this the LLM answering (say) Thoughtseize's
+     * "choose a card to discard" cannot tell it is picking from the
+     * opponent's hand on behalf of its own spell — observed rationales had
+     * the perspective inverted. Returns null when source is unknown.
+     */
+    public static Map<String, Object> buildChoiceContext(mage.abilities.Ability source,
+                                                         Player me, Game game) {
+        if (source == null || me == null || game == null) return null;
+        Card src = game.getCard(source.getSourceId());
+        if (src == null) return null;
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put("source_card", src.getName());
+        ctx.put("source_controller",
+                me.getId().equals(source.getControllerId()) ? "you" : "opponent");
+        ctx.put("source_text", joinRules(src.getRules()));
+        return ctx;
+    }
+
     // -----------------------------------------------------------------------
     // Actor name resolution
     // -----------------------------------------------------------------------

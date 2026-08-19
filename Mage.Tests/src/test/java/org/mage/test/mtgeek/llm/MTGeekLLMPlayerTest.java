@@ -47,6 +47,8 @@ public class MTGeekLLMPlayerTest {
      */
     static class FakeHttpClient extends HttpDecisionClient {
         final Queue<Object> queue = new LinkedList<>();
+        /** Every request passed to decide(), in order — lets tests assert payload contents. */
+        final java.util.List<Map<String, Object>> requests = new java.util.ArrayList<>();
 
         FakeHttpClient() {
             // Endpoint + http + backoff are irrelevant — we override decide().
@@ -58,6 +60,7 @@ public class MTGeekLLMPlayerTest {
 
         @Override
         public DecisionResponse decide(Map<String, Object> request) {
+            requests.add(request);
             Object o = queue.poll();
             if (o == null) {
                 throw new IllegalStateException("FakeHttpClient: no queued response/exception");

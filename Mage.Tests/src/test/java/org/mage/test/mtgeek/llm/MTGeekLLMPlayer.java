@@ -176,7 +176,13 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
             // with no targets, Lotus Petal already sacrificed).
             failedThisTurn.add(chosen.getSourceId());
             // Activation failed (targeting impossible, cost can't be paid, …)
-            // — pass so the engine doesn't loop on the same broken pick.
+            // — surface the rollback so the replay doesn't keep an orphan
+            // decision, then pass so the engine doesn't loop on the pick.
+            mage.cards.Card src = game.getCard(chosen.getSourceId());
+            String verb = chosen instanceof mage.abilities.SpellAbility ? "Cast" : "Activate";
+            DecisionLogger.logCastAborted(game, getName(),
+                    verb + " \"" + (src != null ? src.getName() : "?") + "\"",
+                    "activation failed");
             pass(game);
             return false;
         }
@@ -401,8 +407,10 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         int needed = target.getMaxNumberOfTargets();
         if (needed <= 0) needed = 1;
 
-        List<HookOptions.Option> options = HookOptions.buildChooseTargetOptions(candidates, game);
+        List<HookOptions.Option> options = HookOptions.buildChooseTargetOptions(candidates, game, getId());
         Map<String, Object> req = GameStateSerializer.buildRequest("chooseTarget", this, game);
+        Map<String, Object> choiceCtx = GameStateSerializer.buildChoiceContext(source, this, game);
+        if (choiceCtx != null) req.put("choice_context", choiceCtx);
         req.put("options", HookOptions.toRequestList(options));
 
         try {
@@ -464,6 +472,8 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         List<Mode> ordered = new ArrayList<>(available);
         List<HookOptions.Option> options = HookOptions.buildChooseModeOptions(ordered);
         Map<String, Object> req = GameStateSerializer.buildRequest("chooseMode", this, game);
+        Map<String, Object> choiceCtx = GameStateSerializer.buildChoiceContext(source, this, game);
+        if (choiceCtx != null) req.put("choice_context", choiceCtx);
         req.put("options", HookOptions.toRequestList(options));
 
         try {
@@ -498,6 +508,8 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         snapshotHandIfChanged(game);
         List<HookOptions.Option> options = HookOptions.buildChooseUseOptions(message);
         Map<String, Object> req = GameStateSerializer.buildRequest("chooseUse", this, game);
+        Map<String, Object> choiceCtx = GameStateSerializer.buildChoiceContext(source, this, game);
+        if (choiceCtx != null) req.put("choice_context", choiceCtx);
         req.put("options", HookOptions.toRequestList(options));
 
         try {
@@ -545,18 +557,25 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
         if (candidates.size() <= 1) {
             return super.choose(outcome, cards, target, source, game);
         }
-        int needed = target.getMaxNumberOfTargets();
-        if (needed <= 0) needed = 1;
+        // "up to N" targets (e.g. Atraxa's ETB has max = Integer.MAX_VALUE) are
+        // legal with any pick count in [min, max] — validate against min, and
+        // only cap the number of applied picks at max.
+        int minNeeded = Math.max(0, target.getMinNumberOfTargets());
+        int maxAllowed = target.getMaxNumberOfTargets();
+        if (maxAllowed <= 0) maxAllowed = 1;
 
         List<HookOptions.Option> options = HookOptions.buildChooseFromHandOptions(candidates);
         Map<String, Object> req = GameStateSerializer.buildRequest("chooseFromHand", this, game);
+        Map<String, Object> choiceCtx = GameStateSerializer.buildChoiceContext(source, this, game);
+        if (choiceCtx != null) req.put("choice_context", choiceCtx);
         req.put("options", HookOptions.toRequestList(options));
         // Extra context: outcome category + number of picks needed
         @SuppressWarnings("unchecked")
         Map<String, Object> state = (Map<String, Object>) req.get("state");
         if (state != null) {
             state.put("outcome", outcome != null ? outcome.toString() : "Unknown");
-            state.put("picks_needed", needed);
+            state.put("picks_min", minNeeded);
+            state.put("picks_max", Math.min(maxAllowed, candidates.size()));
         }
 
         try {
@@ -575,17 +594,28 @@ public class MTGeekLLMPlayer extends MTGeekSimplePlayer {
                     return super.choose(outcome, cards, target, source, game);
                 }
             }
-            // Trim to N if LLM over-returned; pad via super if under-returned.
-            if (seen.size() < needed) {
+            // Trim to max if LLM over-returned; pad via super only when the
+            // pick count is below the target's true minimum.
+            if (seen.size() < minNeeded) {
                 DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(),
-                        "LLM returned " + seen.size() + " picks, need " + needed);
+                        "LLM returned " + seen.size() + " picks, need at least " + minNeeded);
                 return super.choose(outcome, cards, target, source, game);
             }
+            java.util.UUID abilityControllerId = target.getAffectedAbilityControllerId(getId());
             int picked = 0;
             StringBuilder summary = new StringBuilder();
             for (int idx : seen) {
-                if (picked >= needed) break;
+                if (picked >= maxAllowed) break;
                 Card c = candidates.get(idx);
+                // Re-check legality before each add: constrained targets (e.g.
+                // Atraxa's one-per-card-type) shrink as picks accumulate.
+                if (!target.possibleTargets(abilityControllerId, source, game, cards)
+                        .contains(c.getId())) {
+                    DecisionLogger.logLLMFallback(game, "chooseFromHand", getName(),
+                            "LLM pick \"" + c.getName() + "\" not a legal target here");
+                    target.clearChosen();
+                    return super.choose(outcome, cards, target, source, game);
+                }
                 target.add(c.getId(), game);
                 if (picked > 0) summary.append(", ");
                 summary.append(c.getName());
